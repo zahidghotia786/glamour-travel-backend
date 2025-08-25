@@ -22,3 +22,9 @@ enum Role {
   B2B
   ADMIN
 }
+
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
