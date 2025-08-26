@@ -1,24 +1,61 @@
 import jwt from "jsonwebtoken";
+import prisma from "../config/db.js";
 
-export const verifyToken = (req, res, next) => {
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.split(" ")[1] : null;
-  if (!token) return res.status(401).json({ error: "No token provided" });
 
+export const authenticateToken = async (req, res, next) => {
   try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        error: "Access token is required" 
+      });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, role }
+    
+    // Optional: Verify user still exists and is active
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, role: true, isActive: true }
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ 
+        success: false, 
+        error: "Invalid or expired token" 
+      });
+    }
+
+    req.user = decoded;
     next();
-  } catch (e) {
-    return res.status(401).json({ error: "Invalid/Expired token" });
+  } catch (error) {
+    return res.status(403).json({ 
+      success: false, 
+      error: "Invalid or expired token" 
+    });
   }
 };
 
-export const requireRoles = (...roles) => {
+// Role-based access control
+export const requireRole = (roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        error: "Authentication required" 
+      });
     }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: "Insufficient permissions" 
+      });
+    }
+
     next();
   };
 };

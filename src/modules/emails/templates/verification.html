@@ -1,0 +1,108 @@
+<!-- templates/verification.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - Glamour Tours UAE</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+            background-color: #f9fafb;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            padding: 30px 20px;
+            text-align: center;
+            color: white;
+        }
+        .logo {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        .content {
+            padding: 30px;
+        }
+        .footer {
+            background-color: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: #4F46E5;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 20px 0;
+        }
+        .divider {
+            height: 1px;
+            background-color: #e5e7eb;
+            margin: 25px 0;
+        }
+        .social-links a {
+            margin: 0 10px;
+            text-decoration: none;
+            color: #4F46E5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="#" class="logo">Glamour Tours UAE</a>
+        </div>
+        
+        <div class="content">
+            <h2>Welcome to Glamour Tours UAE!</h2>
+            <p>Dear {{firstName}},</p>
+            <p>Thank you for registering with Glamour Tours UAE. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+            
+            <div style="text-align: center;">
+                <a href="{{verificationLink}}" class="button">Verify Email Address</a>
+            </div>
+            
+            <p>Or copy and paste this URL into your browser:</p>
+            <p style="word-break: break-all; color: #4F46E5;">{{verificationLink}}</p>
+            
+            <div class="divider"></div>
+            
+            <p>This verification link will expire in 24 hours. If you did not create an account with Glamour Tours UAE, please ignore this email.</p>
+            
+            <p>Best regards,<br>The Glamour Tours UAE Team</p>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2023 Glamour Tours UAE. All rights reserved.</p>
+            <p>Dubai, United Arab Emirates</p>
+            
+            <div class="social-links">
+                <a href="#">Website</a> | 
+                <a href="#">Facebook</a> | 
+                <a href="#">Instagram</a> | 
+                <a href="#">Twitter</a>
+            </div>
+            
+            <p style="margin-top: 15px; font-size: 12px;">
+                You're receiving this email because you recently created a new Glamour Tours UAE account.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

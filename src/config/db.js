@@ -1,17 +1,16 @@
-import { PrismaClient } from "@prisma/client";
+// src/config/db.js
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+let prisma;
 
-async function connectDB() {
-  try {
-    await prisma.$connect();
-    console.log("✅ Database connected successfully");
-  } catch (err) {
-    console.error("❌ Database connection error:", err);
-    process.exit(1);
+if (process.env.NODE_ENV === 'production') {
+  prisma = new PrismaClient();
+} else {
+  // development environment me hot reload ke wajah se multiple clients ban jaate hain
+  if (!global.prisma) {
+    global.prisma = new PrismaClient();
   }
+  prisma = global.prisma;
 }
-
-connectDB();
 
 export default prisma;

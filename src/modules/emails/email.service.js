@@ -1,0 +1,185 @@
+// emails/email.service.js - Improved version
+import nodemailer from "nodemailer";
+import fs from "fs";
+import path from "path";
+import handlebars from "handlebars";
+import { fileURLToPath } from 'url';
+
+// ES modules mein __dirname ka alternative
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Create transporter with better configuration
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  },
+  // Additional settings for better reliability
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
+});
+
+// Verify transporter connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("Email transporter verification failed:", error);
+  } else {
+    console.log("Email transporter is ready to send messages");
+  }
+});
+
+// Load and compile templates with better error handling
+const templates = {};
+
+const loadTemplates = () => {
+  const templatesDir = path.join(__dirname, "templates");
+  
+  // Create templates directory if it doesn't exist
+  if (!fs.existsSync(templatesDir)) {
+    fs.mkdirSync(templatesDir, { recursive: true });
+    console.log("Created templates directory:", templatesDir);
+  }
+  
+  try {
+    // Verification template with fallback
+    let verificationTemplateSource;
+    const verificationTemplatePath = path.join(templatesDir, "verification.html");
+    
+    if (fs.existsSync(verificationTemplatePath)) {
+      verificationTemplateSource = fs.readFileSync(verificationTemplatePath, "utf8");
+    } else {
+      console.warn("Verification template not found, using fallback");
+      verificationTemplateSource = `
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <h2>Welcome to Glamour Tours UAE!</h2>
+          <p>Dear {{firstName}},</p>
+          <p>Please verify your email by clicking the link below:</p>
+          <a href="{{verificationLink}}">Verify Email</a>
+          <p>Or copy this URL: {{verificationLink}}</p>
+        </body>
+        </html>
+      `;
+    }
+    templates.verification = handlebars.compile(verificationTemplateSource);
+    
+    // Similarly for reset password template
+    let resetPasswordTemplateSource;
+    const resetPasswordTemplatePath = path.join(templatesDir, "reset-password.html");
+    
+    if (fs.existsSync(resetPasswordTemplatePath)) {
+      resetPasswordTemplateSource = fs.readFileSync(resetPasswordTemplatePath, "utf8");
+    } else {
+      console.warn("Reset password template not found, using fallback");
+      resetPasswordTemplateSource = `
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <h2>Reset Your Password</h2>
+          <p>Hello {{firstName}},</p>
+          <p>Click the link below to reset your password:</p>
+          <a href="{{resetLink}}">Reset Password</a>
+          <p>Or copy this URL: {{resetLink}}</p>
+        </body>
+        </html>
+      `;
+    }
+    templates.resetPassword = handlebars.compile(resetPasswordTemplateSource);
+    
+    console.log("Email templates loaded successfully");
+  } catch (error) {
+    console.error("Error loading email templates:", error);
+    throw error;
+  }
+};
+
+// Initialize templates on startup
+try {
+  loadTemplates();
+} catch (error) {
+  console.error("Failed to load email templates:", error);
+}
+
+// Generic email sending function with retry logic
+export const sendEmail = async (to, subject, html, retries = 3) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_FROM,
+        to,
+        subject,
+        html,
+      };
+
+      const result = await transporter.sendMail(mailOptions);
+      console.log(`Email sent to ${to}: ${result.messageId}`);
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error(`Attempt ${i + 1} failed to send email to ${to}:`, error);
+      
+      if (i === retries - 1) {
+        return { 
+          success: false, 
+          error: error.message,
+          details: `Failed after ${retries} attempts`
+        };
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+    }
+  }
+};
+
+// emails/email.service.js - Updated function
+export const sendVerificationEmail = async (email, token, firstName) => {
+  try {
+    // FRONTEND URL use karein, backend URL nahi
+    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+    
+    const html = templates.verification({
+      firstName: firstName || "User",
+      verificationLink
+    });
+    
+    return await sendEmail(
+      email,
+      "Verify Your Email - Glamour Tours UAE",
+      html
+    );
+  } catch (error) {
+    console.error("Error sending verification email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send password reset email (future use)
+export const sendPasswordResetEmail = async (email, token, firstName) => {
+  try {
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    
+    const html = templates.resetPassword({
+      firstName: firstName || "User",
+      resetLink
+    });
+    
+    return await sendEmail(
+      email,
+      "Reset Your Password - Glamour Tours UAE",
+      html
+    );
+  } catch (error) {
+    console.error("Error sending password reset email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+export default {
+  sendEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail
+};
