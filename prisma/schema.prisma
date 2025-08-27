@@ -46,6 +46,7 @@ enum ProductType {
 }
 
 enum BookingStatus {
+  PENDING      
   CONFIRMED
   CANCELLED
   FAILED
