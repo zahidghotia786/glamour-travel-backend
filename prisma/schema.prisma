@@ -1,4 +1,3 @@
-
 datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
@@ -19,34 +18,18 @@ model User {
   nationality      String
   password         String
   role             Role      @default(CUSTOMER)
-  preferredLanguage String   @default("en") // en, ar, ru
-  
-  // Business-specific fields (optional)
+  preferredLanguage String   @default("en")
   companyName      String?
   businessLicense  String?
-  
-  // Metadata
   isActive         Boolean   @default(true)
   emailVerified    Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   
-  // Relations (for future use)
+  // Relations - ADDED MISSING RELATIONS
   bookings         Booking[]
-}
-
-model Booking {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String   @db.ObjectId
-  user        User     @relation(fields: [userId], references: [id])
-  
-  // Booking details will be added later
-  ticketType  String?
-  totalAmount Float?
-  status      BookingStatus @default(PENDING)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdProducts  Product[]  @relation("ProductCreator")
+  b2bAccounts      B2BAccount[] @relation("B2BAccountUser")
 }
 
 enum Role {
@@ -55,9 +38,120 @@ enum Role {
   ADMIN
 }
 
+// ---------- Enums ----------
+enum ProductType {
+  THEME_PARK
+  TOUR
+  ACTIVITY
+}
+
 enum BookingStatus {
-  PENDING
   CONFIRMED
   CANCELLED
-  COMPLETED
+  FAILED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum Currency {
+  AED
+  USD
+  EUR
+}
+
+// ---------- Models ----------
+model Product {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  slug          String         @unique
+  type          ProductType
+  shortDesc     String?
+  longDesc      String?
+  baseCurrency  Currency       @default(AED)
+  basePrice     Float          // CHANGED FROM Decimal TO Float
+  isActive      Boolean        @default(true)
+  images        ProductImage[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdById   String?        @db.ObjectId
+  createdBy     User?          @relation(fields: [createdById], references: [id], name: "ProductCreator")
+
+  // Markup rules that target this product
+  markupRules   MarkupRule[]
+  bookingItems  BookingItem[]  // ADDED MISSING RELATION
+}
+
+model ProductImage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  url       String
+  alt       String?
+  productId String   @db.ObjectId
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model B2BAccount {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  code          String      @unique
+  userId        String?     @db.ObjectId
+  user          User?       @relation(fields: [userId], references: [id], name: "B2BAccountUser")
+  defaultMarkup Float       @default(0)
+  currency      Currency    @default(AED)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  markupRules   MarkupRule[]
+  bookings      Booking[]
+}
+
+model MarkupRule {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  b2bAccountId  String?     @db.ObjectId
+  b2bAccount    B2BAccount? @relation(fields: [b2bAccountId], references: [id])
+  productId     String?     @db.ObjectId
+  product       Product?    @relation(fields: [productId], references: [id])
+  percentage    Float
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  isActive      Boolean     @default(true)
+}
+
+model Booking {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  reference       String        @unique
+  userId          String?       @db.ObjectId
+  user            User?         @relation(fields: [userId], references: [id])
+  b2bAccountId    String?       @db.ObjectId
+  b2bAccount      B2BAccount?   @relation(fields: [b2bAccountId], references: [id])
+  status          BookingStatus @default(PENDING)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  currency        Currency      @default(AED)
+  totalNet        Float         // CHANGED FROM Decimal TO Float
+  totalMarkup     Float         // CHANGED FROM Decimal TO Float
+  totalGross      Float         // CHANGED FROM Decimal TO Float
+  supplierRef     String?
+  voucherUrl      String?
+  items           BookingItem[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model BookingItem {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId   String   @db.ObjectId
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  productId   String?  @db.ObjectId
+  product     Product? @relation(fields: [productId], references: [id])
+  name        String
+  date        DateTime?
+  quantity    Int      @default(1)
+  unitNet     Float    // CHANGED FROM Decimal TO Float
+  unitGross   Float    // CHANGED FROM Decimal TO Float
+  subtotalNet Float    // CHANGED FROM Decimal TO Float
+  subtotalGross Float  // CHANGED FROM Decimal TO Float
 }
