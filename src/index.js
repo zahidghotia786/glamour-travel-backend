@@ -22,8 +22,8 @@ const app = express();
 
 // ✅ Allowed Origins
 const allowedOrigins = [
-  "https://glamour-travel.vercel.app", // frontend (Vercel)
-  "http://localhost:3000",             // local dev
+  "https://glamour-travel.vercel.app", 
+  "http://localhost:3000",          
 ];
 
 // ✅ CORS Middleware
