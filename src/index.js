@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import prisma from "./config/db.js"; // ✅ DB connect hote hi check hoga
 import authRoutes from "./modules/auth/auth.routes.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
-// import emailRoutes from "./modules/emails/email.routes.js"
+import emailRoutes from "./modules/emails/email.routes.js"
 
 // import userRoutes from "./modules/users/users.routes.js";
 // import bookingRoutes from "./modules/bookings/bookings.routes.js";
@@ -22,8 +22,8 @@ const app = express();
 
 // ✅ Allowed Origins
 const allowedOrigins = [
-  "https://glamour-travel.vercel.app", 
-  "http://localhost:3000",          
+  "https://glamour-travel.vercel.app", // frontend (Vercel)
+  "http://localhost:3000",             // local dev
 ];
 
 // ✅ CORS Middleware
@@ -43,14 +43,13 @@ app.use(
 );
 
 // ✅ Handle Preflight requests
-app.options("*", cors());
 
 app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
-// app.use("/api/email", emailRoutes);
+app.use("/api/email", emailRoutes);
 
 // app.use("/api/users", userRoutes);
 // app.use("/api/bookings", bookingRoutes);
