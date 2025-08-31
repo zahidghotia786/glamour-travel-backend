@@ -1,4 +1,3 @@
-// emails/email.service.js - Improved version
 import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
@@ -67,7 +66,7 @@ const loadTemplates = () => {
     }
     templates.verification = handlebars.compile(verificationTemplateSource);
     
-    // Similarly for reset password template
+    // Reset password template
     let resetPasswordTemplateSource;
     const resetPasswordTemplatePath = path.join(templatesDir, "reset-password.html");
     
@@ -90,6 +89,54 @@ const loadTemplates = () => {
     }
     templates.resetPassword = handlebars.compile(resetPasswordTemplateSource);
     
+    // B2B Welcome template
+    let b2bWelcomeTemplateSource;
+    const b2bWelcomeTemplatePath = path.join(templatesDir, "b2b-welcome.html");
+    
+    if (fs.existsSync(b2bWelcomeTemplatePath)) {
+      b2bWelcomeTemplateSource = fs.readFileSync(b2bWelcomeTemplatePath, "utf8");
+    } else {
+      console.warn("B2B welcome template not found, using fallback");
+      b2bWelcomeTemplateSource = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(to right, #2563eb, #4f46e5); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0; }
+            .content { background: #f9fafb; padding: 20px; border-radius: 0 0 10px 10px; }
+            .credentials { background: #e0e7ff; padding: 15px; border-radius: 5px; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to Our B2B Platform</h1>
+            </div>
+            <div class="content">
+              <p>Dear {{firstName}},</p>
+              <p>Your B2B account has been successfully created for <strong>{{companyName}}</strong>.</p>
+              
+              <div class="credentials">
+                <h3>Your Login Credentials:</h3>
+                <p><strong>Email:</strong> {{email}}</p>
+                <p><strong>Password:</strong> {{password}}</p>
+                <p><em>Please change your password after first login for security.</em></p>
+              </div>
+              
+              <p>You can now access our B2B portal with special pricing and features.</p>
+              <p><a href="{{frontendUrl}}/login" style="background: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Login to Your Account</a></p>
+              
+              <p>Best regards,<br>B2B Team</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+    }
+    templates.b2bWelcome = handlebars.compile(b2bWelcomeTemplateSource);
+    
     console.log("Email templates loaded successfully");
   } catch (error) {
     console.error("Error loading email templates:", error);
@@ -105,7 +152,7 @@ try {
 }
 
 // Generic email sending function with retry logic
-export const sendEmail = async (to, subject, html, retries = 3) => {
+const sendEmail = async (to, subject, html, retries = 3) => {
   for (let i = 0; i < retries; i++) {
     try {
       const mailOptions = {
@@ -135,10 +182,9 @@ export const sendEmail = async (to, subject, html, retries = 3) => {
   }
 };
 
-// emails/email.service.js - Updated function
-export const sendVerificationEmail = async (email, token, firstName) => {
+// Send verification email
+const sendVerificationEmail = async (email, token, firstName) => {
   try {
-    // FRONTEND URL use karein, backend URL nahi
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
     
     const html = templates.verification({
@@ -157,8 +203,8 @@ export const sendVerificationEmail = async (email, token, firstName) => {
   }
 };
 
-// Send password reset email (future use)
-export const sendPasswordResetEmail = async (email, token, firstName) => {
+// Send password reset email
+const sendPasswordResetEmail = async (email, token, firstName) => {
   try {
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
     
@@ -178,8 +224,32 @@ export const sendPasswordResetEmail = async (email, token, firstName) => {
   }
 };
 
+// Send B2B welcome email
+const sendB2BWelcomeEmail = async (email, firstName, password, companyName) => {
+  try {
+    const html = templates.b2bWelcome({
+      firstName: firstName || "User",
+      email,
+      password,
+      companyName,
+      discountRate: discountRate || 15,
+      frontendUrl: process.env.FRONTEND_URL
+    });
+    
+    return await sendEmail(
+      email,
+      "Welcome to Our B2B Platform - Glamour Tours UAE",
+      html
+    );
+  } catch (error) {
+    console.error("Error sending B2B welcome email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   sendEmail,
   sendVerificationEmail,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendB2BWelcomeEmail
 };

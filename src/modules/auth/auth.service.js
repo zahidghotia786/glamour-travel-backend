@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../../config/db.js";
-import { sendVerificationEmail } from "../emails/email.service.js";
+import sendVerificationEmail from "../emails/email.service.js";
 
 // Register new User (Customer or B2B)
 export const registerUser = async (userData) => {

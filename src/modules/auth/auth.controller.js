@@ -1,4 +1,4 @@
-import { sendPasswordResetEmail } from "../emails/email.service.js";
+import sendPasswordResetEmail from "../emails/email.service.js";
 import { registerUser, loginUser, getUserProfile, updateUserProfile } from "./auth.service.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";

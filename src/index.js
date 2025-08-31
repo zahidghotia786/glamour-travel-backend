@@ -41,17 +41,18 @@ import emailRoutes from "./modules/emails/email.routes.js"
 import productsRoutes from "./modules/products/products.routes.js";
 import b2bRoutes from "./modules/b2b/b2b.routes.js";
 import adminBookingsRoutes from "./modules/bookings/bookings.routes.js";
-
+import usersRoutes from "./modules/users/users.routes.js"
 
 import { errorHandler } from "./middleware/errorHandler.js";
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
 app.use("/api/email", emailRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/admin/products", productsRoutes);
 app.use("/api/admin/b2b", b2bRoutes);
 app.use("/api/admin/bookings", adminBookingsRoutes);
+app.use("/api/users", usersRoutes);
 
 
 // Health Check
