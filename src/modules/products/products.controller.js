@@ -5,7 +5,7 @@ export async function list(req, res, next) {
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: "desc" },
-      include: { images: true },
+      include: { images: true, category: true },
     });
     res.json(products);
   } catch (e) { next(e); }
@@ -15,7 +15,7 @@ export async function getById(req, res, next) {
   try {
     const p = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { images: true },
+      include: { images: true, category: true },
     });
     if (!p) return res.status(404).json({ message: "Not found" });
     res.json(p);
@@ -24,7 +24,7 @@ export async function getById(req, res, next) {
 
 export async function create(req, res, next) {
   try {
-    const { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive, images = [] } = req.body;
+    const { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive, images = [], categoryId  } = req.body;
     const slug = slugify(name, { lower: true, strict: true });
     const exists = await prisma.product.findUnique({ where: { slug } });
     if (exists) return res.status(409).json({ message: "Product with same name/slug exists" });
@@ -35,9 +35,10 @@ export async function create(req, res, next) {
         baseCurrency, basePrice,
         isActive: isActive ?? true,
         createdById: req.user?.id || null,
+        categoryId: categoryId || null,
         images: { create: images.map(i => ({ url: i.url, alt: i.alt || "" })) },
       },
-      include: { images: true },
+      include: { images: true, category: true },
     });
     res.status(201).json(created);
   } catch (e) { next(e); }
@@ -45,14 +46,26 @@ export async function create(req, res, next) {
 
 export async function update(req, res, next) {
   try {
-    const { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive, images = [] } = req.body;
+    const { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive, images = [], categoryId  } = req.body;
+
+        // Validate category exists if provided
+    if (categoryId) {
+      const category = await prisma.category.findUnique({
+        where: { id: categoryId }
+      });
+      if (!category) {
+        return res.status(400).json({ message: "Invalid category ID" });
+      }
+    }
 
     // Replace images (simple strategy)
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.product.findUnique({ where: { id: req.params.id } });
       if (!existing) throw new Error("Not found");
 
-      const data = { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive };
+      const data = { name, type, shortDesc, longDesc, baseCurrency, basePrice, isActive 
+        ,categoryId: categoryId || null
+      };
       if (name && name !== existing.name) data["slug"] = slugify(name, { lower: true, strict: true });
 
       await tx.productImage.deleteMany({ where: { productId: req.params.id } });
@@ -62,7 +75,7 @@ export async function update(req, res, next) {
           ...data,
           images: { create: images.map(i => ({ url: i.url, alt: i.alt || "" })) },
         },
-        include: { images: true },
+        include: { images: true, category: true },
       });
     });
 

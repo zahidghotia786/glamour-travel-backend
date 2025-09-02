@@ -42,6 +42,8 @@ import productsRoutes from "./modules/products/products.routes.js";
 import b2bRoutes from "./modules/b2b/b2b.routes.js";
 import adminBookingsRoutes from "./modules/bookings/bookings.routes.js";
 import usersRoutes from "./modules/users/users.routes.js"
+import categoryRoutes from "./modules/categories/categories.routes.js"
+
 
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -53,6 +55,7 @@ app.use("/api/admin/products", productsRoutes);
 app.use("/api/admin/b2b", b2bRoutes);
 app.use("/api/admin/bookings", adminBookingsRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/admin/categories", categoryRoutes);
 
 
 // Health Check

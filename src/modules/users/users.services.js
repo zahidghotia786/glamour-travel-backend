@@ -36,8 +36,9 @@ class UserService {
 
   // Update user profile
   async updateProfile(userId, userData) {
+    console.log('User Service - Update Profile Data:', userData);
     try {
-      const { firstName, lastName, phoneNumber, dateOfBirth, nationality, preferredLanguage } = userData;
+      const { firstName, lastName, phoneNumber, dateOfBirth, nationality, preferredLanguage, metadata  } = userData;
 
       const updatedUser = await prisma.user.update({
         where: { id: userId },
@@ -47,7 +48,8 @@ class UserService {
           ...(phoneNumber && { phoneNumber }),
           ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
           ...(nationality && { nationality }),
-          ...(preferredLanguage && { preferredLanguage })
+          ...(preferredLanguage && { preferredLanguage }),
+          ...(metadata && { metadata })
         },
         select: {
           id: true,
@@ -60,6 +62,7 @@ class UserService {
           role: true,
           companyName: true,
           preferredLanguage: true,
+          metadata: true,
           createdAt: true,
           updatedAt: true
         }

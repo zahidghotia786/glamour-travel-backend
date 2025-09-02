@@ -27,13 +27,14 @@ model User {
   emailVerified    Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+  metadata  Json?    @default("{}")
   
   // Relations
   bookings         Booking[]
   createdProducts  Product[]  @relation("ProductCreator")
   b2bAccounts      B2BAccount[] @relation("B2BAccountUser")
   
-  // Account management relations - FIXED: Added opposite relation
+  // Account management relations
   managedUsers     User[]    @relation("AccountManager") 
   accountManagerId String?   @db.ObjectId
   accountManager   User?     @relation("AccountManager", fields: [accountManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -72,6 +73,32 @@ enum Currency {
   EUR
 }
 
+// ADDED: Missing CategoryStatus enum
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+// FIXED: Category model for MongoDB - CORRECTED
+model Category {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  description  String
+  slug         String         @unique
+  icon         String?        @default("📂")
+  status       CategoryStatus @default(ACTIVE)
+  displayOrder Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  products     Product[]
+  
+  @@map("categories")
+  @@index([status, displayOrder])
+}
+
 // ---------- Models ----------
 model Product {
   id            String         @id @default(auto()) @map("_id") @db.ObjectId
@@ -84,6 +111,8 @@ model Product {
   basePrice     Float
   isActive      Boolean        @default(true)
   images        ProductImage[]
+  categoryId    String         @db.ObjectId
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   createdById   String?        @db.ObjectId
@@ -92,6 +121,8 @@ model Product {
   // Markup rules that target this product
   markupRules   MarkupRule[]
   bookingItems  BookingItem[]
+  
+  @@index([categoryId, isActive])
 }
 
 model ProductImage {
@@ -99,7 +130,9 @@ model ProductImage {
   url       String
   alt       String?
   productId String   @db.ObjectId
-  product   Product  @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@index([productId])
 }
 
 model B2BAccount {
@@ -107,7 +140,7 @@ model B2BAccount {
   name          String
   code          String      @unique
   userId        String?     @db.ObjectId
-  user          User?       @relation("B2BAccountUser", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user          User?       @relation("B2BAccountUser", fields: [userId], references: [id], onDelete: NoAction)
   defaultMarkup Float       @default(0)
   currency      Currency    @default(AED)
   isActive      Boolean     @default(true)
@@ -116,27 +149,31 @@ model B2BAccount {
 
   markupRules   MarkupRule[]
   bookings      Booking[]
+  
+  @@index([code, isActive])
 }
 
 model MarkupRule {
   id            String      @id @default(auto()) @map("_id") @db.ObjectId
   b2bAccountId  String?     @db.ObjectId
-  b2bAccount    B2BAccount? @relation(fields: [b2bAccountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  b2bAccount    B2BAccount? @relation(fields: [b2bAccountId], references: [id], onDelete: Cascade)
   productId     String?     @db.ObjectId
-  product       Product?    @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product       Product?    @relation(fields: [productId], references: [id], onDelete: Cascade)
   percentage    Float
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   isActive      Boolean     @default(true)
+  
+  @@index([b2bAccountId, productId, isActive])
 }
 
 model Booking {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   reference       String        @unique
   userId          String?       @db.ObjectId
-  user            User?         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user            User?         @relation(fields: [userId], references: [id], onDelete: NoAction)
   b2bAccountId    String?       @db.ObjectId
-  b2bAccount      B2BAccount?   @relation(fields: [b2bAccountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  b2bAccount      B2BAccount?   @relation(fields: [b2bAccountId], references: [id], onDelete: NoAction)
   status          BookingStatus @default(PENDING)
   paymentStatus   PaymentStatus @default(UNPAID)
   currency        Currency      @default(AED)
@@ -148,24 +185,26 @@ model Booking {
   items           BookingItem[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  
+  @@index([userId, b2bAccountId, status, paymentStatus, createdAt])
 }
 
 model BookingItem {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId   String   @db.ObjectId
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  productId   String?  @db.ObjectId
-  product     Product? @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  name        String
-  date        DateTime?
-  quantity    Int      @default(1)
-  unitNet     Float
-  unitGross   Float
-  subtotalNet Float
-  subtotalGross Float
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId      String   @db.ObjectId
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  productId      String?  @db.ObjectId
+  product        Product? @relation(fields: [productId], references: [id], onDelete: NoAction)
+  name           String
+  date           DateTime?
+  quantity       Int      @default(1)
+  unitNet        Float
+  unitGross      Float
+  subtotalNet    Float
+  subtotalGross  Float
+  
+  @@index([bookingId, productId, date])
 }
-
-
 
 model Settings {
   id    String @id @default(auto()) @map("_id") @db.ObjectId
