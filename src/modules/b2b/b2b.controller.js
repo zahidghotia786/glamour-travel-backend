@@ -1,52 +1,50 @@
 import prisma from "../../config/db.js";
 import b2bService from "./b2b.service.js";
 
-export async function listMarkups(req, res, next) {
-  try {
-    const rules = await prisma.markupRule.findMany({
-      where: { isActive: true },
-      include: {
-        b2bAccount: { select: { id: true, name: true, code: true } },
-        product: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json(rules);
-  } catch (e) { next(e); }
-}
-
-export async function createOrUpdateMarkup(req, res, next) {
-  try {
-    const { id, b2bAccountId, productId, percentage } = req.body;
-    if (percentage == null) return res.status(400).json({ message: "percentage is required" });
-
-    let rule;
-    if (id) {
-      rule = await prisma.markupRule.update({
-        where: { id },
-        data: { b2bAccountId: b2bAccountId || null, productId: productId || null, percentage, isActive: true },
-      });
-    } else {
-      rule = await prisma.markupRule.create({
-        data: { b2bAccountId: b2bAccountId || null, productId: productId || null, percentage, isActive: true },
-      });
-    }
-    res.json(rule);
-  } catch (e) { next(e); }
-}
-
-export async function deleteMarkup(req, res, next) {
-  try {
-    await prisma.markupRule.update({ where: { id: req.params.id }, data: { isActive: false } });
-    res.json({ ok: true });
-  } catch (e) { next(e); }
-}
-
-
 class B2BController {
   async createB2BUser(req, res) {
     try {
-      const result = await b2bService.createB2BUser(req.body);
+      const {
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        companyName,
+        businessLicense,
+        accountManagerId,
+        markupType,
+        markupValue
+      } = req.body;
+
+      // Validate required fields
+      if (!firstName || !lastName || !email || !phoneNumber || !companyName) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Validate markup data
+      if (!markupType || markupValue === undefined || markupValue === null) {
+        return res.status(400).json({ error: 'Markup type and value are required' });
+      }
+
+      if (markupType !== 'percentage' && markupType !== 'fixed') {
+        return res.status(400).json({ error: 'Markup type must be either "percentage" or "fixed"' });
+      }
+
+      if (markupValue < 0) {
+        return res.status(400).json({ error: 'Markup value cannot be negative' });
+      }
+
+      const result = await b2bService.createB2BUser({
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        companyName,
+        businessLicense,
+        accountManagerId,
+        markupType,
+        markupValue
+      });
       
       res.status(201).json({
         message: 'B2B user created successfully',
@@ -60,6 +58,59 @@ class B2BController {
       }
       
       if (error.message.includes('required') || error.message.includes('Invalid')) {
+        return res.status(400).json({ error: error.message });
+      }
+      
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async updateB2BUser(req, res) {
+    try {
+      const userId = req.params.id;
+      const {
+        firstName,
+        lastName,
+        phoneNumber,
+        companyName,
+        businessLicense,
+        accountManagerId,
+        markupType,
+        markupValue
+      } = req.body;
+
+      // Validate markup data if provided
+      if (markupType && markupType !== 'percentage' && markupType !== 'fixed') {
+        return res.status(400).json({ error: 'Markup type must be either "percentage" or "fixed"' });
+      }
+
+      if (markupValue !== undefined && markupValue !== null && markupValue < 0) {
+        return res.status(400).json({ error: 'Markup value cannot be negative' });
+      }
+
+      const result = await b2bService.updateB2BUser(userId, {
+        firstName,
+        lastName,
+        phoneNumber,
+        companyName,
+        businessLicense,
+        accountManagerId,
+        markupType,
+        markupValue
+      });
+      
+      res.status(200).json({
+        message: 'B2B user updated successfully',
+        ...result
+      });
+    } catch (error) {
+      console.error('Update B2B user error:', error);
+      
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+      
+      if (error.message.includes('Invalid')) {
         return res.status(400).json({ error: error.message });
       }
       

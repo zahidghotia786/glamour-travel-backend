@@ -27,13 +27,9 @@ router.patch("/users/:userId/role", updateUserRole);
 router.delete("/users/:userId", deleteUser);
 router.patch("/users/:userId/assign-manager", assignAccountManager);
 router.get("/managers/:managerId/users", getUsersByManager);
+// Backend route for updating B2B users
 
 
-// Future routes for other admin functions
-// router.get("/bookings", getAllBookings);
-// router.post("/products", createProduct);
-// router.get("/products", getAllProducts);
-// router.patch("/products/:productId", updateProduct);
-// router.delete("/products/:productId", deleteProduct);
+
 
 export default router;

@@ -36,7 +36,6 @@ class UserService {
 
   // Update user profile
   async updateProfile(userId, userData) {
-    console.log('User Service - Update Profile Data:', userData);
     try {
       const { firstName, lastName, phoneNumber, dateOfBirth, nationality, preferredLanguage, metadata  } = userData;
 

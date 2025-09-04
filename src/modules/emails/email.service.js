@@ -225,14 +225,15 @@ const sendPasswordResetEmail = async (email, token, firstName) => {
 };
 
 // Send B2B welcome email
-const sendB2BWelcomeEmail = async (email, firstName, password, companyName) => {
+const sendB2BWelcomeEmail = async (email, firstName, password, companyName, markupType, markupValue) => {
   try {
     const html = templates.b2bWelcome({
       firstName: firstName || "User",
       email,
       password,
       companyName,
-      discountRate: discountRate || 15,
+      markupType: markupType || "percentage",
+      markupValue: markupValue || 0,
       frontendUrl: process.env.FRONTEND_URL
     });
     

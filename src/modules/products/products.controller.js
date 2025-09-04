@@ -89,3 +89,131 @@ export async function remove(req, res, next) {
     res.json({ ok: true });
   } catch (e) { next(e); }
 }
+
+
+
+
+// Public functions
+export async function getProductsPublic(req, res) {
+  try {
+    const { category, isActive, minPrice, maxPrice, search } = req.query;
+    
+    const where = {
+      isActive: true // Only show active products to public
+    };
+    
+    if (category) {
+      where.categoryId = category;
+    }
+    
+    if (minPrice || maxPrice) {
+      where.basePrice = {};
+      if (minPrice) where.basePrice.gte = parseFloat(minPrice);
+      if (maxPrice) where.basePrice.lte = parseFloat(maxPrice);
+    }
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { shortDesc: { contains: search, mode: 'insensitive' } },
+        { longDesc: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const products = await prisma.product.findMany({
+      where,
+      include: {
+        category: true,
+        images: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function getProductsByCategory(req, res) {
+  try {
+    const { categoryId } = req.params;
+    
+    // Validate category exists
+    const category = await prisma.category.findUnique({
+      where: { id: categoryId }
+    });
+    
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    
+    const products = await prisma.product.findMany({
+      where: { 
+        categoryId,
+        isActive: true 
+      },
+      include: {
+        category: true,
+        images: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json({
+      category,
+      products
+    });
+  } catch (error) {
+    console.error('Get products by category error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function getFeaturedProducts(req, res) {
+  try {
+    const products = await prisma.product.findMany({
+      where: { 
+        isActive: true 
+      },
+      include: {
+        category: true,
+        images: true
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 12 // Limit to 12 featured products
+    });
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Get featured products error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function getProductById(req, res) {
+  try {
+    const { id } = req.params;
+    
+    const product = await prisma.product.findUnique({
+      where: { 
+        id,
+        isActive: true // Only return active products to public
+      },
+      include: {
+        category: true,
+        images: true
+      }
+    });
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.status(200).json(product);
+  } catch (error) {
+    console.error('Get product by ID error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}

@@ -9,7 +9,7 @@ router.use(authenticateToken);
 
 // User profile routes
 router.get('/profile', usersController.getProfile);
-router.patch('/profile', usersController.updateProfile);
+router.patch('/profile', requireRole(['ADMIN', 'B2B']) , usersController.updateProfile);
 
 // User bookings routes
 router.get('/bookings', usersController.getUserBookings);

@@ -759,3 +759,4 @@ export const getUsersByManager = async (req, res) => {
 
 
 
+// update b2b user by admin 

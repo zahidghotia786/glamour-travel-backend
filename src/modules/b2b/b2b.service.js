@@ -15,7 +15,7 @@ class B2BService {
 
   // Validate B2B user data
   validateB2BUserData(userData) {
-    const { firstName, lastName, email, phoneNumber, companyName } = userData;
+    const { firstName, lastName, email, phoneNumber, companyName, markupType, markupValue } = userData;
     
     if (!firstName || !lastName || !email || !phoneNumber || !companyName) {
       throw new Error('First name, last name, email, phone number, and company name are required');
@@ -25,6 +25,19 @@ class B2BService {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       throw new Error('Invalid email format');
+    }
+
+    // Validate markup data
+    if (!markupType || markupValue === undefined || markupValue === null) {
+      throw new Error('Markup type and value are required');
+    }
+
+    if (markupType !== 'percentage' && markupType !== 'fixed') {
+      throw new Error('Markup type must be either "percentage" or "fixed"');
+    }
+
+    if (markupValue < 0) {
+      throw new Error('Markup value cannot be negative');
     }
 
     return true;
@@ -43,9 +56,9 @@ class B2BService {
         phoneNumber, 
         companyName, 
         businessLicense, 
-        creditLimit,
         accountManagerId,
-        b2bDiscountRate
+        markupType,
+        markupValue
       } = userData;
 
       // Check if user already exists
@@ -57,14 +70,8 @@ class B2BService {
         throw new Error('User with this email already exists');
       }
 
-            // GET DEFAULT FROM ADMIN SETTINGS INSTEAD OF HARCODED VALUE
-      const adminSettings = await prisma.settings.findUnique({
-        where: { type: 'B2B_SETTINGS' }
-      });
-
-       const defaultDiscount = adminSettings?.value?.defaultB2BDiscount || 15;
-
       // Validate account manager if provided
+      let validatedAccountManagerId = null;
       if (accountManagerId && accountManagerId.trim() !== '') {
         try {
           const accountManager = await prisma.user.findUnique({
@@ -73,21 +80,19 @@ class B2BService {
           
           if (!accountManager || !['ADMIN', 'ACCOUNT_MANAGER'].includes(accountManager.role)) {
             console.warn('Invalid account manager ID provided, setting to null');
-            accountManagerId = null;
+          } else {
+            validatedAccountManagerId = accountManagerId;
           }
         } catch (error) {
           console.warn('Error validating account manager, setting to null:', error.message);
-          accountManagerId = null;
         }
-      } else {
-        accountManagerId = null;
       }
 
       // Generate strong temporary password
       const tempPassword = this.generateStrongPassword();
       const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
-      // Create B2B user - ADDED b2bDiscountRate field
+      // Create B2B user with markup fields
       const newUser = await prisma.user.create({
         data: {
           firstName,
@@ -98,9 +103,9 @@ class B2BService {
           role: 'B2B',
           companyName,
           businessLicense: businessLicense || null,
-          creditLimit: creditLimit ? parseInt(creditLimit) : 50000,
-          b2bDiscountRate: parseFloat(b2bDiscountRate) || defaultDiscount,
-          accountManagerId: accountManagerId || null,
+          markupType,
+          markupValue: parseFloat(markupValue),
+          accountManagerId: validatedAccountManagerId,
           isActive: true,
           emailVerified: true,
           nationality: 'UAE',
@@ -124,7 +129,8 @@ class B2BService {
         firstName, 
         tempPassword,
         companyName,
-        newUser.b2bDiscountRate
+        markupType,
+        markupValue
       );
 
       if (!emailResult.success) {
@@ -138,8 +144,8 @@ class B2BService {
           lastName: newUser.lastName,
           email: newUser.email,
           companyName: newUser.companyName,
-          creditLimit: newUser.creditLimit,
-          b2bDiscountRate: newUser.b2bDiscountRate, // ADDED THIS LINE
+          markupType: newUser.markupType,
+          markupValue: newUser.markupValue,
           accountManager: newUser.accountManager
         },
         emailSent: emailResult.success
@@ -147,6 +153,92 @@ class B2BService {
 
     } catch (error) {
       console.error('B2B Service Error:', error);
+      throw error;
+    }
+  }
+
+  // Update B2B user
+  async updateB2BUser(userId, userData) {
+    try {
+      const { 
+        firstName, 
+        lastName, 
+        phoneNumber, 
+        companyName, 
+        businessLicense, 
+        accountManagerId,
+        markupType,
+        markupValue
+      } = userData;
+
+      // Check if user exists
+      const existingUser = await prisma.user.findUnique({
+        where: { id: userId, role: 'B2B' }
+      });
+
+      if (!existingUser) {
+        throw new Error('B2B user not found');
+      }
+
+      // Validate account manager if provided
+      let validatedAccountManagerId = null;
+      if (accountManagerId && accountManagerId.trim() !== '') {
+        try {
+          const accountManager = await prisma.user.findUnique({
+            where: { id: accountManagerId }
+          });
+          
+          if (!accountManager || !['ADMIN', 'ACCOUNT_MANAGER'].includes(accountManager.role)) {
+            console.warn('Invalid account manager ID provided, setting to null');
+          } else {
+            validatedAccountManagerId = accountManagerId;
+          }
+        } catch (error) {
+          console.warn('Error validating account manager, setting to null:', error.message);
+        }
+      }
+
+      // Update B2B user with markup fields
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          firstName,
+          lastName,
+          phoneNumber,
+          companyName,
+          businessLicense: businessLicense || null,
+          // REMOVED: creditLimit
+          markupType: markupType || existingUser.markupType,
+          markupValue: markupValue !== undefined ? parseFloat(markupValue) : existingUser.markupValue,
+          accountManagerId: validatedAccountManagerId
+        },
+        include: {
+          accountManager: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return {
+        user: {
+          id: updatedUser.id,
+          firstName: updatedUser.firstName,
+          lastName: updatedUser.lastName,
+          email: updatedUser.email,
+          companyName: updatedUser.companyName,
+          markupType: updatedUser.markupType,
+          markupValue: updatedUser.markupValue,
+          accountManager: updatedUser.accountManager
+        }
+      };
+
+    } catch (error) {
+      console.error('B2B Service Update Error:', error);
       throw error;
     }
   }
@@ -174,17 +266,30 @@ class B2BService {
     }
   }
 
-  // ADDED: Calculate B2B price with discount
-  calculateB2BPrice(basePrice, discountRate) {
-    const discountPercentage = discountRate || 15.0;
-    const discountAmount = (basePrice * discountPercentage) / 100;
-    return {
-      originalPrice: basePrice,
-      discountPercentage,
-      discountAmount,
-      finalPrice: basePrice - discountAmount,
-      currency: 'AED'
-    };
+  // Calculate B2B price with markup
+  calculateB2BPrice(basePrice, markupType, markupValue) {
+    if (markupType === 'percentage') {
+      const markupAmount = (basePrice * markupValue) / 100;
+      return {
+        originalPrice: basePrice,
+        markupType,
+        markupValue,
+        markupAmount,
+        finalPrice: basePrice + markupAmount,
+        currency: 'AED'
+      };
+    } else if (markupType === 'fixed') {
+      return {
+        originalPrice: basePrice,
+        markupType,
+        markupValue,
+        markupAmount: markupValue,
+        finalPrice: basePrice + markupValue,
+        currency: 'AED'
+      };
+    }
+    
+    throw new Error('Invalid markup type');
   }
 }
 
