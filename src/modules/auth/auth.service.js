@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../../config/db.js";
-import sendVerificationEmail from "../emails/email.service.js";
+import emailService from "../emails/email.service.js";
 
 // Register new User (Customer or B2B)
 export const registerUser = async (userData) => {
@@ -98,7 +98,7 @@ export const registerUser = async (userData) => {
     );
 
       // Send verification email (you'll need to implement this function)
-    await sendVerificationEmail(user.email, verificationToken, user.firstName);
+    await emailService.sendVerificationEmail(user.email, verificationToken, user.firstName);
 
     // Generate JWT token
     const token = jwt.sign(
