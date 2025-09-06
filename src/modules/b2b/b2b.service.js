@@ -207,7 +207,6 @@ class B2BService {
           phoneNumber,
           companyName,
           businessLicense: businessLicense || null,
-          // REMOVED: creditLimit
           markupType: markupType || existingUser.markupType,
           markupValue: markupValue !== undefined ? parseFloat(markupValue) : existingUser.markupValue,
           accountManagerId: validatedAccountManagerId
