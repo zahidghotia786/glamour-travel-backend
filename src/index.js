@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
 
 import prisma from "./config/db.js"; // ✅ DB connect hote hi check hoga
 
@@ -34,6 +35,8 @@ app.use(
 
 app.use(express.json());
 
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
@@ -44,7 +47,7 @@ import b2bRoutes from "./modules/b2b/b2b.routes.js";
 import adminBookingsRoutes from "./modules/bookings/bookings.routes.js";
 import usersRoutes from "./modules/users/users.routes.js"
 import categoryRoutes from "./modules/categories/categories.routes.js"
-
+import tourRoutes from "./modules/tickets/tickets.routes.js";
 
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -61,6 +64,7 @@ app.use("/api/admin/b2b", b2bRoutes);
 app.use("/api/admin/bookings", adminBookingsRoutes);
 app.use("/api/admin/categories", categoryRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/tour", tourRoutes);
 
   /////  admin controll  /////
 
