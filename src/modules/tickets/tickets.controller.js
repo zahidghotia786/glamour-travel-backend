@@ -9,6 +9,7 @@ import {
   fetchTourTimeslots,
   checkTourAvailability,
 } from "./tickets.service.js";
+import prisma from "../../config/db.js";
 
 // Get available countries
 export const getCountries = async (req, res) => {
