@@ -196,9 +196,7 @@ export const checkTourAvailability = async (params) => {
     const response = await axios.post(
       `${config.rayna.baseUrl}/api/Tour/availability`,
       params,
-      {
-        headers: getHeaders()
-      }
+      { headers: getHeaders() }
     );
     return response.data.result || [];
   } catch (error) {
@@ -206,6 +204,7 @@ export const checkTourAvailability = async (params) => {
     throw error;
   }
 };
+
 
 // Helper function for headers
 const getHeaders = () => ({

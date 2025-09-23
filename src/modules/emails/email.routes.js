@@ -1,8 +1,9 @@
 // Add to your auth routes
 import express from "express";
-import { verifyEmail } from "./email.controller.js";
+import { verifyEmail, resendVerification } from "./email.controller.js";
 const router = express.Router();
 
-router.get("/verify-email/:token", verifyEmail);
+router.get("/verify-email", verifyEmail);
+router.post("/resend-verification", resendVerification);
 
 export default router;

@@ -254,28 +254,18 @@ export const getDubaiTourTimeslots = async (req, res) => {
 };
 
 // Check Dubai tour availability
+// Controller
 export const checkDubaiTourAvailability = async (req, res) => {
   try {
     const {
       tourId,
-      tourOptionId,
-      transferId,
-      travelDate,
-      adult = 2,
-      child = 0,
-      infant = 0,
       contractId,
+      travelDate
     } = req.body;
-
     const availability = await checkTourAvailability({
       tourId,
-      tourOptionId,
-      transferId,
-      travelDate: travelDate || new Date().toISOString().split("T")[0],
-      adult,
-      child,
-      infant,
       contractId,
+      travelDate: travelDate || new Date().toISOString().split("T")[0],
     });
 
     res.json({
@@ -292,6 +282,8 @@ export const checkDubaiTourAvailability = async (req, res) => {
     });
   }
 };
+
+
 
 // Helper functions
 const getUaeCountry = async () => {
