@@ -26,7 +26,7 @@ router.post("/approve", authenticateToken, requireRole('ADMIN'), approveTour);
 router.post("/dubai/tour-details", getDubaiTourDetails);
 router.post("/dubai/tour-prices", getDubaiTourPrices);
 router.post("/dubai/tour-options", getDubaiTourOptions);
-router.post("/dubai/timeslots", getDubaiTourTimeslots);
 router.post("/dubai/availability", checkDubaiTourAvailability);
+router.post("/dubai/timeslots", getDubaiTourTimeslots);
 
 export default router;

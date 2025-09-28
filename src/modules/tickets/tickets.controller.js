@@ -96,7 +96,6 @@ export const getDubaiTourDetails = async (req, res) => {
     const uaeCountry = await getUaeCountry();
     const dubaiCity = await getDubaiCity(uaeCountry.countryId);
 
-
     const date = travelDate || new Date().toISOString().split("T")[0];
 
     // Fetch details + prices in parallel
@@ -146,8 +145,6 @@ export const getDubaiTourDetails = async (req, res) => {
   }
 };
 
-
-
 // Get Dubai tour prices
 export const getDubaiTourPrices = async (req, res) => {
   try {
@@ -184,7 +181,7 @@ export const getDubaiTourOptions = async (req, res) => {
       tourId,
       contractId,
       travelDate,
-      noOfAdult = 2,
+      noOfAdult = 0,
       noOfChild = 0,
       noOfInfant = 0,
     } = req.body;
@@ -214,37 +211,67 @@ export const getDubaiTourOptions = async (req, res) => {
   }
 };
 
+
 // Get Dubai tour timeslots
 export const getDubaiTourTimeslots = async (req, res) => {
   try {
     const {
       tourId,
       tourOptionId,
-      transferId,
       travelDate,
-      adult = 2,
-      child = 0,
+      transferId,
       contractId,
+      adult,
+      child,
     } = req.body;
+
+    console.log("🕒 Backend Timeslots Parameters:", {
+      tourId,
+      tourOptionId,
+      travelDate,
+      transferId,
+      contractId,
+      adult,
+      child,
+    });
+
+    // ✅ Validate required parameters
+    if (
+      !tourId ||
+      !tourOptionId ||
+      !travelDate ||
+      !contractId ||
+      adult == null ||
+      child == null
+    ) {
+      return res.status(400).json({
+        statuscode: 1,
+        error:
+          "Missing required parameters: tourId, tourOptionId, travelDate, contractId, adult, child",
+      });
+    }
 
     const timeslots = await fetchTourTimeslots({
       tourId,
       tourOptionId,
       transferId,
-      travelDate: travelDate || new Date().toISOString().split("T")[0],
+      travelDate,
+      contractId,
       adult,
       child,
-      contractId,
     });
+
+    console.log("✅ Backend Timeslots Result:", timeslots);
 
     res.json({
       statuscode: 0,
       error: "",
-      count: timeslots.length,
-      result: timeslots,
+      count: Array.isArray(timeslots) ? timeslots.length : 0,
+      result: timeslots || [],
     });
   } catch (error) {
     console.error("❌ Controller Error:", error.message);
+    console.error("❌ Controller Error Stack:", error.stack);
     res.status(500).json({
       statuscode: 1,
       error: "Failed to fetch timeslots",
@@ -253,19 +280,20 @@ export const getDubaiTourTimeslots = async (req, res) => {
   }
 };
 
+
 // Check Dubai tour availability
-// Controller
 export const checkDubaiTourAvailability = async (req, res) => {
   try {
-    const {
-      tourId,
-      contractId,
-      travelDate
-    } = req.body;
+    const { tourId, tourOptionId, transferId, travelDate, adult, contractId } =
+      req.body;
+
     const availability = await checkTourAvailability({
       tourId,
+      tourOptionId,
+      transferId,
+      travelDate,
+      adult,
       contractId,
-      travelDate: travelDate || new Date().toISOString().split("T")[0],
     });
 
     res.json({
@@ -282,7 +310,6 @@ export const checkDubaiTourAvailability = async (req, res) => {
     });
   }
 };
-
 
 
 // Helper functions
@@ -362,10 +389,7 @@ export const approveTour = async (req, res) => {
   }
 };
 
-
-
-// publick dubai tours data 
-
+// publick dubai tours data
 
 // Public API: Only Approved Dubai Tours
 export const getDubaiToursPublic = async (req, res) => {
