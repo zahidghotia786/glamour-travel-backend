@@ -10,7 +10,7 @@ import {
   getDubaiTourTimeslots,
   checkDubaiTourAvailability,
   approveTour,
-  getDubaiToursPublic
+  getDubaiToursPublic,
 } from "./tickets.controller.js";
 import { authenticateToken, requireRole } from "../../middleware/authMiddleware.js";
 
@@ -27,6 +27,8 @@ router.post("/dubai/tour-details", getDubaiTourDetails);
 router.post("/dubai/tour-prices", getDubaiTourPrices);
 router.post("/dubai/tour-options", getDubaiTourOptions);
 router.post("/dubai/availability", checkDubaiTourAvailability);
-router.post("/dubai/timeslots", getDubaiTourTimeslots);
+router.post("/dubai/timeslots", getDubaiTourTimeslots);   ///not used
+
+
 
 export default router;

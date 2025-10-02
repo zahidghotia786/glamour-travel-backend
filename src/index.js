@@ -48,6 +48,9 @@ import adminBookingsRoutes from "./modules/bookings/bookings.routes.js";
 import usersRoutes from "./modules/users/users.routes.js"
 import categoryRoutes from "./modules/categories/categories.routes.js"
 import tourRoutes from "./modules/tickets/tickets.routes.js";
+import bookingRoutes from './modules/bookings/bookings.routes.js'
+import paymentRoutes from "./modules/payments/payments.routes.js"
+import complaintRoutes from './modules/complaint/complaintsRoutes.js'
 
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -65,6 +68,9 @@ app.use("/api/admin/bookings", adminBookingsRoutes);
 app.use("/api/admin/categories", categoryRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/tour", tourRoutes);
+app.use("/api/booking", bookingRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/complaints", complaintRoutes);
 
   /////  admin controll  /////
 

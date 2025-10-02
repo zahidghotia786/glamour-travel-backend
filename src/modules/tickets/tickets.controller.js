@@ -8,8 +8,12 @@ import {
   fetchTourOptions,
   fetchTourTimeslots,
   checkTourAvailability,
+  cancelBookings,
+  getBookedTicketsList,
+  createBookingTicket,
 } from "./tickets.service.js";
 import prisma from "../../config/db.js";
+import { validationResult } from "express-validator";
 
 // Get available countries
 export const getCountries = async (req, res) => {
@@ -389,7 +393,6 @@ export const approveTour = async (req, res) => {
   }
 };
 
-// publick dubai tours data
 
 // Public API: Only Approved Dubai Tours
 export const getDubaiToursPublic = async (req, res) => {
@@ -426,3 +429,4 @@ export const getDubaiToursPublic = async (req, res) => {
     });
   }
 };
+
