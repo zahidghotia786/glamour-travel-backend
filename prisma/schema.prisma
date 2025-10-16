@@ -423,7 +423,6 @@ model ComplaintMessage {
 
 
 model Tour {
-  id          Int      @id @default(autoincrement())
   tourId      String
   cityName    String
   countryName String
