@@ -420,14 +420,3 @@ model ComplaintMessage {
   @@map("complaint_messages")
 }
 
-
-
-model Tour {
-  id          Int      @id @default(auto())
-  tourId      String
-  cityName    String
-  countryName String
-  rawJson     Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
