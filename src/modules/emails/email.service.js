@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import handlebars from "handlebars";
 import { fileURLToPath } from 'url';
+import { config } from "../../config/env.js";
 
 // ES modules mein __dirname ka alternative
 const __filename = fileURLToPath(import.meta.url);
@@ -10,16 +11,16 @@ const __dirname = path.dirname(__filename);
 
 // Create transporter with better configuration
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // SSL required
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
+    user: config.email.user,
+    pass: config.email.password, // App password here
   },
-  // Additional settings for better reliability
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 100,
 });
+
+
 
 // Verify transporter connection on startup
 transporter.verify((error, success) => {

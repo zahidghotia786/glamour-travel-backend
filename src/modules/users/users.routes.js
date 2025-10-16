@@ -9,30 +9,16 @@ router.use(authenticateToken);
 
 // User profile routes
 router.get('/profile', usersController.getProfile);
-router.patch('/profile', requireRole(['ADMIN', 'B2B']) , usersController.updateProfile);
+router.patch('/profile', requireRole(['ADMIN', 'B2B']), usersController.updateProfile);
 
 // User bookings routes
 router.get('/bookings', usersController.getUserBookings);
 
 // Admin specific routes
-router.get('/admin/profile', 
-  requireRole(['ADMIN']), 
-  usersController.getProfile
-);
+router.get('/admin/profile', requireRole(['ADMIN']), usersController.getProfile);
+router.patch('/admin/profile', requireRole(['ADMIN']), usersController.updateAdminProfile);
 
-router.patch('/admin/profile', 
-  requireRole(['ADMIN']), 
-  usersController.updateAdminProfile
-);
-
-router.get('/admin/settings', 
-  requireRole(['ADMIN']), 
-  usersController.getAdminSettings
-);
-
-router.patch('/admin/settings', 
-  requireRole(['ADMIN']), 
-  usersController.updateAdminSettings
-);
+router.get('/admin/settings', requireRole(['ADMIN']), usersController.getAdminSettings);
+router.patch('/admin/settings', requireRole(['ADMIN']), usersController.updateAdminSettings);
 
 export default router;

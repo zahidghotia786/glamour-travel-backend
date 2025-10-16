@@ -1,10 +1,9 @@
 
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import prisma from "../../config/db.js";
 import emailService from "../emails/email.service.js";
+import User from '../../models/users/model.js';
 
-// Register new User (Customer or B2B)
+// ✅ Register new User (Customer or B2B)
 export const registerUser = async (userData) => {
   const {
     firstName,
@@ -26,7 +25,7 @@ export const registerUser = async (userData) => {
   }
 
   // Check if user already exists
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await User.findOne({ email: email.toLowerCase().trim() });
   if (existing) throw new Error("User already exists with this email address");
 
   // Validate password strength
@@ -35,9 +34,7 @@ export const registerUser = async (userData) => {
   }
 
   // Validate role
-  const validRoles = ["CUSTOMER", "B2B", "customer", "business"];
   const normalizedRole = role.toUpperCase() === "BUSINESS" ? "B2B" : role.toUpperCase();
-  
   if (!["CUSTOMER", "B2B"].includes(normalizedRole)) {
     throw new Error("Invalid role. Must be CUSTOMER or B2B");
   }
@@ -47,202 +44,117 @@ export const registerUser = async (userData) => {
     throw new Error("Company name is required for business accounts");
   }
 
-  // Validate phone number format (basic validation)
+  // Validate phone number format
   const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,15}$/;
   if (!phoneRegex.test(phoneNumber)) {
     throw new Error("Please provide a valid phone number");
   }
 
-  // Hash password
-  const hashedPassword = await bcrypt.hash(password, 12);
-
-  // Prepare user data
+  // ✅ Prepare user data
   const userCreateData = {
     firstName,
     lastName,
     email: email.toLowerCase().trim(),
     phoneNumber,
     nationality,
-    password: hashedPassword,
+    password, // hashing handled by pre-save hook in schema
     role: normalizedRole,
     preferredLanguage: ["en", "ar", "ru"].includes(preferredLanguage) ? preferredLanguage : "en",
   };
 
-  // Add date of birth if provided
-  if (dateOfBirth) {
-    userCreateData.dateOfBirth = new Date(dateOfBirth);
-  }
-
-  // Add business fields if B2B
+  if (dateOfBirth) userCreateData.dateOfBirth = new Date(dateOfBirth);
   if (normalizedRole === "B2B") {
     userCreateData.companyName = companyName;
-    if (businessLicense) {
-      userCreateData.businessLicense = businessLicense;
-    }
+    if (businessLicense) userCreateData.businessLicense = businessLicense;
   }
 
-  try {
-    // Create user in database
-    const user = await prisma.user.create({
-      data: userCreateData,
-    });
+  // ✅ Create user in database
+  const user = await User.create(userCreateData);
 
-        // Generate email verification token
-    const verificationToken = jwt.sign(
-      { 
-        id: user.id,
-        email: user.email 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" } // Token expires in 24 hours
-    );
+  // Generate email verification token
+  const verificationToken = jwt.sign(
+    { id: user._id, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "24h" }
+  );
 
-      // Send verification email (you'll need to implement this function)
-    await emailService.sendVerificationEmail(user.email, verificationToken, user.firstName);
+  // Send verification email
+  await emailService.sendVerificationEmail(user.email, verificationToken, user.firstName);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        role: user.role,
-        email: user.email 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" } // Extended to 7 days for better UX
-    );
+  // Generate auth token
+  const token = jwt.sign(
+    { id: user._id, role: user.role, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 
-    // Return safe user data (exclude password)
-    const safeUser = {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
-      nationality: user.nationality,
-      role: user.role,
-      preferredLanguage: user.preferredLanguage,
-      ...(user.companyName && { companyName: user.companyName }),
-      ...(user.businessLicense && { businessLicense: user.businessLicense }),
-      isActive: user.isActive,
-      emailVerified: user.emailVerified,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
+  // Safe user response
+  const safeUser = user.toJSON();
 
-    return { token, user: safeUser };
-
-  } catch (error) {
-    if (error.code === 'P2002') {
-      throw new Error("User already exists with this email address");
-    }
-    throw new Error(`Registration failed: ${error.message}`);
-  }
+  return { token, user: safeUser };
 };
 
-// auth.service.js - loginUser function update
+
+
+// ✅ Login User
 export const loginUser = async ({ email, password }) => {
   if (!email || !password) {
     throw new Error("Email and password are required");
   }
 
-  // Find user by email
-  const user = await prisma.user.findUnique({ 
-    where: { email: email.toLowerCase().trim() } 
-  });
-  
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
   if (!user) {
     throw new Error("Invalid email or password");
   }
 
-  // Check if user is active
   if (!user.isActive) {
     throw new Error("Account has been deactivated. Please contact support.");
   }
 
-  // Check if email is verified
   if (!user.emailVerified) {
     throw new Error("Please verify your email first. Check your inbox for verification link.");
   }
 
-
-  // Verify password
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid) {
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) {
     throw new Error("Invalid email or password");
   }
 
-  // Generate JWT token
   const token = jwt.sign(
-    { 
-      id: user.id, 
-      role: user.role,
-      email: user.email 
-    },
+    { id: user._id, role: user.role, email: user.email },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
 
-  // Return safe user data
-  const safeUser = {
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    name: `${user.firstName} ${user.lastName}`,
-    email: user.email,
-    phoneNumber: user.phoneNumber,
-    nationality: user.nationality,
-    role: user.role,
-    preferredLanguage: user.preferredLanguage,
-    ...(user.companyName && { companyName: user.companyName }),
-    ...(user.businessLicense && { businessLicense: user.businessLicense }),
-    isActive: user.isActive,
-    emailVerified: user.emailVerified,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+  const safeUser = user.toJSON();
 
   return { token, user: safeUser };
 };
-// Get user profile
+
+
+
+// ✅ Get user profile
 export const getUserProfile = async (userId) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phoneNumber: true,
-      dateOfBirth: true,
-      nationality: true,
-      role: true,
-      preferredLanguage: true,
-      companyName: true,
-      businessLicense: true,
-      isActive: true,
-      emailVerified: true,
-      createdAt: true,
-      updatedAt: true,
-    }
-  });
+  const user = await User.findById(userId).select(
+    "firstName lastName email phoneNumber dateOfBirth nationality role preferredLanguage companyName businessLicense isActive emailVerified createdAt updatedAt"
+  );
 
-  if (!user) {
-    throw new Error("User not found");
-  }
+  if (!user) throw new Error("User not found");
 
-  return {
-    ...user,
-    name: `${user.firstName} ${user.lastName}`, // For backward compatibility
-  };
+  const data = user.toObject();
+  data.name = `${data.firstName} ${data.lastName}`;
+  return data;
 };
 
-// Update user profile
+
+
+// ✅ Update user profile
 export const updateUserProfile = async (userId, updateData) => {
   const allowedFields = [
-    'firstName', 'lastName', 'phoneNumber', 'nationality', 
-    'preferredLanguage', 'companyName', 'businessLicense'
+    "firstName", "lastName", "phoneNumber", "nationality",
+    "preferredLanguage", "companyName", "businessLicense"
   ];
-  
+
   const filteredData = {};
   Object.keys(updateData).forEach(key => {
     if (allowedFields.includes(key)) {
@@ -254,33 +166,17 @@ export const updateUserProfile = async (userId, updateData) => {
     throw new Error("No valid fields to update");
   }
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: filteredData,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phoneNumber: true,
-      dateOfBirth: true,
-      nationality: true,
-      role: true,
-      preferredLanguage: true,
-      companyName: true,
-      businessLicense: true,
-      isActive: true,
-      emailVerified: true,
-      createdAt: true,
-      updatedAt: true,
-    }
-  });
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { $set: filteredData },
+    { new: true, runValidators: true }
+  ).select(
+    "firstName lastName email phoneNumber dateOfBirth nationality role preferredLanguage companyName businessLicense isActive emailVerified createdAt updatedAt"
+  );
 
-  return {
-    ...user,
-    name: `${user.firstName} ${user.lastName}`,
-  };
+  if (!updatedUser) throw new Error("User not found");
+
+  const data = updatedUser.toObject();
+  data.name = `${data.firstName} ${data.lastName}`;
+  return data;
 };
-
-
-

@@ -1,16 +1,22 @@
 // src/config/db.js
-import { PrismaClient } from '@prisma/client';
+import mongoose from "mongoose";
 
-let prisma;
-
-if (process.env.NODE_ENV === 'production') {
-  prisma = new PrismaClient();
-} else {
-  // development environment me hot reload ke wajah se multiple clients ban jaate hain
-  if (!global.prisma) {
-    global.prisma = new PrismaClient();
+export async function connectDB() {
+  const uri = process.env.DATABASE_URL;
+  if (!uri) {
+    throw new Error("❌ DATABASE_URL is not defined in environment variables");
   }
-  prisma = global.prisma;
+
+  try {
+    mongoose.set("strictQuery", false); // optional but recommended for mongoose 7+
+    await mongoose.connect(uri, {
+      // useNewUrlParser & useUnifiedTopology already default in mongoose >=6
+    });
+    console.log("✅ MongoDB connected successfully");
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
+    process.exit(1);
+  }
 }
 
-export default prisma;
+export default mongoose;

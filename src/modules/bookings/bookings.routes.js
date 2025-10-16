@@ -1,33 +1,59 @@
 import { Router } from "express";
 import * as controller from "./bookings.controller.js";
 import { authenticateToken, requireRole } from "../../middleware/authMiddleware.js";
-import { body } from "express-validator";
+import { body, param } from "express-validator";
 
 const router = Router();
 
-router.get("/", authenticateToken, requireRole("ADMIN"), controller.adminList);
-router.patch("/:id/cancel", authenticateToken, requireRole("ADMIN"), controller.adminCancel);
-
-
+// Sirf yeh route chahiye abhi
 router.post(
-  "/create-with-payment", authenticateToken,
+  "/create-with-payment", 
+  authenticateToken,
   [
-    body('passengerCount').isInt({ min: 1 }).withMessage('Valid passenger count is required'),
-    body('leadPassenger').isObject().withMessage('Lead passenger details are required'),
-    body('totalGross').isFloat({ min: 0 }).withMessage('Valid total amount is required'),
-    body('paymentMethod').isIn(['ziina', 'card', 'bank']).withMessage('Valid payment method is required'),
+    body('uniqueNo').notEmpty().withMessage('Unique number is required'),
+    body('TourDetails').isArray({ min: 1 }).withMessage('Tour details are required'),
+    body('passengers').isArray({ min: 1 }).withMessage('Passengers are required'),
+    body('clientReferenceNo').notEmpty().withMessage('Client reference is required'),
+    body('paymentMethod').isIn(['ziina']).withMessage('Only Ziina payment is supported'),
   ],
   controller.createBookingWithPayment
 );
 
+// Payment status check ke liye
+router.get('/payment-status/:paymentIntentId', authenticateToken, controller.getPaymentStatus);
 
-// Tour Booking routes
-router.post('/bookings', authenticateToken,  controller.createBooking);
-router.post('/tickets', controller.getBookedTickets);
-router.post('/cancel', controller.cancelBooking);
+// Webhook for payment notifications
+router.post('/payment-webhook', controller.handlePaymentWebhook);
 
 
-// routes/bookings.js
-router.get('/my-bookings', authenticateToken, controller.getUserBookings);
+// Cancel Booking
+router.post("/cancel/:bookingId", authenticateToken, controller.cancelBooking);
+
+// Get Merged Booked Tickets
+router.get(
+  "/tickets/:bookingId",
+  [
+    param("bookingId")
+      .notEmpty().withMessage("Booking ID is required")
+      .isMongoId().withMessage("Invalid Booking ID"),
+  ],
+  controller.getMergedTickets
+);
+
+
+
+// Admin: Get all bookings
+router.get("/all", authenticateToken , requireRole("ADMIN"), controller.getAllBookings);
+
+// User: Get bookings by user ID
+router.get(
+  "/user/:userId",authenticateToken,
+  [
+    param("userId")
+      .notEmpty().withMessage("User ID is required")
+      .isMongoId().withMessage("Invalid User ID"),
+  ],
+  controller.getBookingsByUser
+);
 
 export default router;

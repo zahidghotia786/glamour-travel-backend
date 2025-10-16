@@ -1,569 +1,439 @@
+import { validationResult } from "express-validator";
 import axios from "axios";
-import prisma from "../../config/db.js";
-import { createPaymentSession } from "../payments/payments.controller.js";
-import { cancelBookings, createBookingTicket, getBookedTicketsList } from "../tickets/tickets.service.js";
+import Booking from "../../models/booking.model.js";
+import PaymentTransaction from "../../models/PaymentTransaction.js";
+import { cancelBookingOnRayna, getMergedBookedTickets, sendBookingToRayna } from "./raynaBooking.service.js";
 
-export const createBooking = async (req, res) => {
-  try {
-    const bookingData = req.body;
-    const userId = req.user.id;
-    
-    // Step 1: Create booking with external API
-    const result = await createBookingTicket(bookingData, userId);
-
-    // Step 2: If booking is successful, automatically create payment session
-    if (result.statuscode === 200 && result.result) {
-      try {
-        // Get the booking ID from the result
-        const bookingId = result.result.bookingId || result.result[0]?.bookingId;
-        
-        if (bookingId) {
-          // Calculate total amount
-          const totalAmount = calculateTotalFromBooking(bookingData);
-          
-          // Auto-create payment session
-          const paymentSession = await createPaymentSession({
-            body: {
-              bookingId: bookingId,
-              amount: totalAmount,
-              currency: 'AED',
-              paymentMethod: bookingData.paymentMethod || 'ziina'
-            },
-            user: { id: userId }
-          }, res); // Pass res to handle response
-
-          // If payment session created successfully, return both booking and payment info
-          if (paymentSession && paymentSession.success) {
-            return res.status(200).json({
-              statuscode: 200,
-              error: null,
-              result: {
-                booking: result.result,
-                payment: {
-                  paymentIntentId: paymentSession.paymentIntentId,
-                  paymentRedirectUrl: paymentSession.paymentRedirectUrl,
-                  message: "Booking created successfully. Redirect to complete payment."
-                }
-              }
-            });
-          }
-        }
-      } catch (paymentError) {
-        console.error("Payment session creation failed:", paymentError);
-        // Continue with booking success even if payment fails
-        // User can pay later from their bookings
-      }
-    }
-
-    // Return just booking result if payment integration fails or not needed
-    return res.status(200).json({
-      statuscode: 200,
-      error: null,
-      result: result.result
-    });
-
-  } catch (error) {
-    console.error("Booking creation error:", error);
-    
-    let statusCode = 500;
-    let errorMessage = error.message || "Internal server error";
-    
-    if (error.message.includes('Child are not allowed') || 
-        error.message.includes('validation') ||
-        error.message.includes('required') ||
-        error.message.includes('missing')) {
-      statusCode = 400;
-    } else if (error.message.includes('unauthorized') || 
-               error.message.includes('token') ||
-               error.message.includes('authentication')) {
-      statusCode = 401;
-    } else if (error.message.includes('External API') || 
-               error.message.includes('network') ||
-               error.message.includes('timeout')) {
-      statusCode = 502;
-    }
-
-    return res.status(statusCode).json({
-      statuscode: statusCode,
-      error: errorMessage,
-      result: []
+export const createBookingWithPayment = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      errors: errors.array(),
     });
   }
-};
 
-// 🆕 Helper function to calculate total from booking data
-function calculateTotalFromBooking(bookingData) {
-  if (!bookingData.TourDetails || !bookingData.TourDetails[0]) return 0;
-  
-  const tourDetail = bookingData.TourDetails[0];
-  const adultTotal = (tourDetail.adult || 0) * (parseFloat(tourDetail.adultRate) || 0);
-  const childTotal = (tourDetail.child || 0) * (parseFloat(tourDetail.childRate) || 0);
-  
-  return adultTotal + childTotal;
-}
-
-// 🆕 Enhanced booking creation that integrates with payment
-export const createBookingWithPayment = async (req, res) => {
   try {
-    const bookingData = req.body;
+    const {
+      uniqueNo,
+      TourDetails,
+      passengers,
+      clientReferenceNo,
+      paymentMethod,
+      totalGross,
+      passengerCount,
+      leadPassenger,
+    } = req.body;
+
     const userId = req.user.id;
 
-    console.log('Creating booking with payment integration...');
+    console.log("🔄 Creating booking with payment session...", {
+      uniqueNo,
+      passengerCount,
+      paymentMethod,
+    });
 
-    // Validate required fields for payment
-    if (!bookingData.paymentMethod) {
-      return res.status(400).json({
-        statuscode: 400,
-        error: "Payment method is required",
-        result: []
+    // Step 1: Check for existing booking with the same reference
+    let booking = await Booking.findOne({ reference: uniqueNo });
+
+    if (booking) {
+      // Booking exists, check status
+      if (booking.paymentStatus === "PAID" || booking.status === "CONFIRMED") {
+        return res.status(400).json({
+          success: false,
+          error: "Booking with this reference is already completed.",
+        });
+      } else {
+        // Booking exists but not completed, update it
+        booking.userId = userId;
+        booking.clientReferenceNo = clientReferenceNo;
+        booking.passengerCount = passengerCount;
+        booking.leadPassenger = leadPassenger;
+        booking.passengers = passengers;
+        booking.tourDetails = TourDetails;
+        booking.totalGross = totalGross;
+        booking.paymentMethod = paymentMethod.toUpperCase();
+        booking.paymentStatus = "PENDING";
+        booking.status = "PENDING";
+        booking.updatedAt = new Date();
+
+        await booking.save();
+        console.log("🔄 Reusing existing booking:", booking._id);
+      }
+    } else {
+      // Booking doesn't exist, create a new one
+      booking = new Booking({
+        userId: userId,
+        reference: uniqueNo,
+        clientReferenceNo: clientReferenceNo,
+        passengerCount: passengerCount,
+        leadPassenger: leadPassenger,
+        passengers: passengers,
+        tourDetails: TourDetails,
+        totalGross: totalGross,
+        currency: "AED",
+        paymentMethod: paymentMethod.toUpperCase(),
+        paymentStatus: "PENDING",
+        status: "PENDING",
       });
+
+      await booking.save();
+      console.log("✅ New booking created:", booking._id);
     }
 
-    // Create booking first
-    const bookingResult = await createBookingTicket(bookingData, userId);
+    const savedBooking = await booking.save();
+    console.log("✅ Booking created in MongoDB:", savedBooking._id);
 
-    if (bookingResult.statuscode !== 200 || !bookingResult.result) {
-      return res.status(400).json({
-        statuscode: 400,
-        error: bookingResult.error || "Booking creation failed",
-        result: []
-      });
-    }
-
-    // Extract booking reference and ID
-    const bookingReference = bookingResult.result.referenceNo || bookingResult.result[0]?.refernceNo;
-    let bookingId;
-
-    // Find the booking in database to get its ID
-    if (bookingReference) {
-      const dbBooking = await prisma.booking.findUnique({
-        where: { reference: bookingReference }
-      });
-      bookingId = dbBooking?.id;
-    }
-
-    if (!bookingId) {
-      // If we can't find booking ID, return success but without payment
-      return res.status(200).json({
-        statuscode: 200,
-        error: null,
-        result: {
-          booking: bookingResult.result,
-          message: "Booking created successfully. Please complete payment from your bookings page."
-        }
-      });
-    }
-
-    // Calculate total amount
-    const totalAmount = calculateTotalFromBooking(bookingData);
-
-    // Create payment session
-    const paymentResult = await createPaymentSessionDirect({
-      bookingId,
-      amount: totalAmount,
-      currency: 'AED',
-      paymentMethod: bookingData.paymentMethod
-    }, userId);
+    // Step 2: Create Ziina Payment Session
+    const paymentResult = await createZiinaPaymentSession(
+      savedBooking,
+      totalGross,
+      "AED"
+    );
 
     if (!paymentResult.success) {
-      // Return booking success but payment setup failed
-      return res.status(200).json({
-        statuscode: 200,
-        error: null,
-        result: {
-          booking: bookingResult.result,
-          message: "Booking created! Payment setup failed. Please complete payment from your bookings page."
-        }
+      // Mark booking as failed
+      await Booking.findByIdAndUpdate(savedBooking._id, {
+        paymentStatus: "FAILED",
+        status: "FAILED",
+        updatedAt: new Date(),
+      });
+
+      return res.status(400).json({
+        statuscode: 400,
+        error: paymentResult.error,
+        result: [],
       });
     }
 
-    // Success - return both booking and payment info
-    res.status(200).json({
+    // Step 3: Update booking with payment details
+    await Booking.findByIdAndUpdate(savedBooking._id, {
+      paymentIntentId: paymentResult.paymentIntentId,
+      paymentGateway: paymentResult.gateway,
+      updatedAt: new Date(),
+    });
+
+    // Step 4: Create payment transaction record
+    const paymentTransaction = new PaymentTransaction({
+      bookingId: savedBooking._id,
+      paymentIntentId: paymentResult.paymentIntentId,
+      amount: totalGross,
+      currency: "AED",
+      status: "PENDING",
+      gatewayResponse: paymentResult.rawResponse,
+      gateway: paymentResult.gateway,
+    });
+
+    await paymentTransaction.save();
+
+    console.log("✅ Payment session created:", paymentResult.paymentIntentId);
+
+    // Step 5: Return response with redirect URL
+    res.json({
       statuscode: 200,
-      error: null,
       result: {
-        booking: bookingResult.result,
+        booking: {
+          id: savedBooking._id,
+          reference: savedBooking.reference,
+          status: savedBooking.status,
+          paymentStatus: savedBooking.paymentStatus,
+        },
         payment: {
           paymentIntentId: paymentResult.paymentIntentId,
-          paymentRedirectUrl: paymentResult.paymentRedirectUrl,
-          message: "Booking created successfully. Redirect to complete payment."
-        }
-      }
+          paymentRedirectUrl: paymentResult.redirectUrl,
+          gateway: paymentResult.gateway,
+        },
+      },
+      message: "Booking created successfully. Redirect to complete payment.",
     });
-
   } catch (error) {
-    console.error("Booking with payment error:", error);
+    console.error("❌ Create booking with payment error:", error);
     res.status(500).json({
       statuscode: 500,
-      error: error.message || "Booking and payment processing failed",
-      result: []
+      error: "Internal server error",
     });
   }
 };
 
-// 🆕 Direct payment session creation (without Express req/res)
-async function createPaymentSessionDirect(paymentData, userId) {
-  try {
-    const { bookingId, amount, currency, paymentMethod } = paymentData;
-
-    // Verify booking exists and belongs to user
-    const booking = await prisma.booking.findFirst({
-      where: {
-        id: bookingId,
-        userId: userId
-      },
-      include: {
-        user: true
-      }
-    });
-
-    if (!booking) {
-      throw new Error('Booking not found or access denied');
-    }
-
-    if (booking.paymentStatus === 'PAID') {
-      throw new Error('Booking already paid');
-    }
-
-    // Handle different payment methods
-    let paymentResult;
-    switch (paymentMethod) {
-      case 'ziina':
-        paymentResult = await createZiinaPaymentSession(booking, amount, currency);
-        break;
-      case 'card':
-        paymentResult = await createCardPaymentSession(booking, amount, currency);
-        break;
-      case 'bank':
-        paymentResult = await createBankTransferSession(booking, amount, currency);
-        break;
-      default:
-        throw new Error('Unsupported payment method');
-    }
-
-    if (!paymentResult.success) {
-      throw new Error(paymentResult.error);
-    }
-
-    // Update booking with payment intent ID
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        paymentIntentId: paymentResult.paymentIntentId,
-        paymentMethod: paymentMethod.toUpperCase(),
-        paymentStatus: 'PENDING',
-        paymentGateway: paymentResult.gateway,
-        updatedAt: new Date(),
-      },
-    });
-
-    // Create payment transaction record
-    await prisma.paymentTransaction.create({
-      data: {
-        bookingId: bookingId,
-        paymentIntentId: paymentResult.paymentIntentId,
-        amount: amount,
-        currency: currency,
-        status: 'PENDING',
-        gatewayResponse: paymentResult.rawResponse,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-    });
-
-    return {
-      success: true,
-      paymentIntentId: paymentResult.paymentIntentId,
-      paymentRedirectUrl: paymentResult.redirectUrl,
-      gateway: paymentResult.gateway
-    };
-
-  } catch (error) {
-    console.error('Direct payment session error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}
-
-// 🆕 Payment method implementations (copy from your paymentController)
+// Ziina Payment Integration
 async function createZiinaPaymentSession(booking, amount, currency) {
-  console.log('Creating Ziina payment session...');
-  console.log('Booking:', booking);
-  console.log('Amount:', amount, 'Currency:', currency);
   try {
     const paymentIntent = await axios.post(
       "https://api-v2.ziina.com/api/payment_intent",
       {
-        amount: Math.round(amount * 100),
+        amount: Math.round(amount * 100), // Convert to fils
         currency_code: currency,
         message: `Payment for tour booking - Ref: ${booking.reference}`,
-        success_url: `${process.env.FRONTEND_URL}/payment-success?bookingId=${booking.id}&paymentIntentId={payment_intent_id}`,
-        cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled?bookingId=${booking.id}`,
-        failure_url: `${process.env.FRONTEND_URL}/payment-failed?bookingId=${booking.id}`,
-        test: true,
+        success_url: `${process.env.FRONTEND_URL}/payment-success?bookingId=${booking._id}&paymentIntentId={payment_intent_id}`,
+        cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled?bookingId=${booking._id}`,
+        failure_url: `${process.env.FRONTEND_URL}/payment-failed?bookingId=${booking._id}`,
+        test: process.env.NODE_ENV === "development", // Use test mode for development
         transaction_source: "directApi",
-        expiry: String(Date.now() + 15 * 60 * 1000),
+        expiry: String(Date.now() + 15 * 60 * 1000), // 15 minutes expiry
         allow_tips: false,
         metadata: {
-          bookingId: booking.id,
-          userId: booking.userId,
+          bookingId: booking._id.toString(),
+          userId: booking.userId.toString(),
           reference: booking.reference,
-          tourType: getTourType(booking.apiResponse)
-        }
+        },
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.ZIINA_API_TOKEN}`,
           "Content-Type": "application/json",
         },
-        timeout: 10000
+        timeout: 10000,
       }
     );
 
     if (!paymentIntent.data.redirect_url) {
-      return { success: false, error: 'No redirect URL received from Ziina' };
+      return { success: false, error: "No redirect URL received from Ziina" };
     }
 
     return {
       success: true,
       paymentIntentId: paymentIntent.data.id,
       redirectUrl: paymentIntent.data.redirect_url,
-      gateway: 'ZIINA',
-      rawResponse: paymentIntent.data
+      gateway: "ZIINA",
+      rawResponse: paymentIntent.data,
     };
-
   } catch (error) {
-    console.error('Ziina payment error:', error.response?.data || error.message);
+    console.error(
+      "❌ Ziina payment error:",
+      error.response?.data || error.message
+    );
     return {
       success: false,
-      error: error.response?.data?.message || 'Ziina payment service unavailable'
+      error:
+        error.response?.data?.message || "Ziina payment service unavailable",
     };
   }
 }
 
-async function createCardPaymentSession(booking, amount, currency) {
-  // Your card payment implementation
-  const paymentSession = {
-    id: `card_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    url: `${process.env.FRONTEND_URL}/card-payment?bookingId=${booking.id}`
-  };
-
-  return {
-    success: true,
-    paymentIntentId: paymentSession.id,
-    redirectUrl: paymentSession.url,
-    gateway: 'CARD',
-    rawResponse: paymentSession
-  };
-}
-
-async function createBankTransferSession(booking, amount, currency) {
-  const transferReference = `BANK-${booking.reference}-${Date.now()}`;
-  
-  const bankDetails = {
-    bankName: process.env.BANK_NAME || 'Example Bank',
-    accountName: process.env.BANK_ACCOUNT_NAME || 'Tour Company LLC',
-    accountNumber: process.env.BANK_ACCOUNT_NUMBER || '123456789',
-    iban: process.env.BANK_IBAN || 'AE070331234567890123456',
-    swiftCode: process.env.BANK_SWIFT || 'EXBLAEAD',
-    reference: transferReference,
-    amount: amount,
-    currency: currency,
-    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000)
-  };
-
-  await prisma.booking.update({
-    where: { id: booking.id },
-    data: {
-      gatewayReference: transferReference,
-      updatedAt: new Date(),
-    },
-  });
-
-  return {
-    success: true,
-    paymentIntentId: transferReference,
-    redirectUrl: `${process.env.FRONTEND_URL}/bank-transfer?bookingId=${booking.id}&reference=${transferReference}`,
-    gateway: 'BANK_TRANSFER',
-    rawResponse: bankDetails
-  };
-}
-
-function getTourType(apiResponse) {
-  if (!apiResponse) return "Tour Booking";
-  if (apiResponse.error?.includes("6 Emirates")) return "6 Emirates in a Day Tour with Lunch";
-  if (apiResponse.result?.details?.[0]?.servicetype) return apiResponse.result.details[0].servicetype;
-  return "Tour Booking";
-}
-
-
-
-export async function adminList(req, res, next) {
+// Webhook Handler for Payment Notifications
+export const handlePaymentWebhook = async (req, res) => {
   try {
-    const { q, status, paymentStatus } = req.query;
-    const where = {};
-    if (status) where["status"] = status;
-    if (paymentStatus) where["paymentStatus"] = paymentStatus;
-    if (q) {
-      where["OR"] = [
-        { reference: { contains: q, mode: "insensitive" } },
-        { supplierRef: { contains: q, mode: "insensitive" } },
-      ];
-    }
+    const event = req.body;
+    console.log("🔄 Received payment webhook:", event.type);
 
-    const bookings = await prisma.booking.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: { select: { id: true, email: true, name: true } },
-        b2bAccount: { select: { id: true, name: true, code: true } },
-        items: true,
-      },
-    });
-    res.json(bookings);
-  } catch (e) { next(e); }
-}
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      const { bookingId } = paymentIntent.metadata;
 
-export async function adminCancel(req, res, next) {
-  try {
-    const id = req.params.id;
-    // TODO: if supplier booking, call supplier cancel API here.
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: { status: "CANCELLED" },
-    });
-    res.json(updated);
-  } catch (e) { next(e); }
-}
+      if (bookingId) {
+        const booking = await Booking.findById(bookingId);
 
-
-
-
-// api booking code 
-
-
-
-export const getBookedTickets = async (req, res) => {
-
-
-  try {
-    const ticketData = req.body; 
-    console.log("Received ticket fetch request:", ticketData);
-    const result = await getBookedTicketsList(ticketData);
-
-    console.log("Fetched tickets:", result);
-    return res.status(200).json({
-      statuscode: 200,
-      error: null,
-      result
-    });
-  } catch (error) {
-    console.error("Ticket fetch error:", error);
-    return res.status(500).json({
-      statuscode: 500,
-      error: error.message || "Internal server error",
-      result: []
-    });
-  }
-};
-
-
-export const cancelBooking = async (req, res) => {
-
-
-  try {
-    const cancellationData = req.body;
-    
-    // Call external API to cancel booking
-    const result = await cancelBookings(cancellationData);
-
-    // If external API call is successful, update status in database
-    if (result.statuscode === 200) {
-      await updateBookingStatus(cancellationData.bookingId, cancellationData.referenceNo);
-    }
-
-    return res.status(200).json({
-      statuscode: 200,
-      error: null,
-      result
-    });
-  } catch (error) {
-    console.error("Cancellation error:", error);
-    return res.status(500).json({
-      statuscode: 500,
-      error: error.message || "Internal server error",
-      result: []
-    });
-  }
-};
-
-// Function to update booking status to CANCELLED
-async function updateBookingStatus(bookingId, referenceNo) {
-  try {
-    // Convert bookingId to string since externalBookingId is String type in schema
-    const bookingIdString = bookingId.toString();
-    
-    const updatedBooking = await prisma.booking.updateMany({
-      where: {
-        OR: [
-          { externalBookingId: bookingIdString }, // Now using string
-          { reference: referenceNo }
-        ]
-      },
-      data: {
-        status: 'CANCELLED',
-        updatedAt: new Date()
-      }
-    });
-
-    if (updatedBooking.count === 0) {
-      console.warn(`No booking found with externalBookingId: ${bookingIdString} or reference: ${referenceNo}`);
-    } else {
-      console.log(`Booking status updated to CANCELLED: ${updatedBooking.count} record(s)`);
-    }
-
-    return updatedBooking;
-  } catch (error) {
-    console.error("Error updating booking status:", error);
-    throw new Error("Failed to update booking status");
-  }
-}
-
-
-
-// get booking from db 
-export const getUserBookings = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const bookings = await prisma.booking.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        items: true,
-        user: {
-          select: {
-            firstName: true,
-            lastName: true,
-            email: true
-          }
+        if (booking && booking.paymentStatus !== "PAID") {
+          await processSuccessfulPayment(booking, paymentIntent.id);
+          console.log(
+            `✅ Webhook: Payment confirmed for booking: ${booking.reference}`
+          );
         }
       }
+    } else if (event.type === "payment_intent.cancelled") {
+      const paymentIntent = event.data.object;
+      const { bookingId } = paymentIntent.metadata;
+
+      if (bookingId) {
+        await Booking.findByIdAndUpdate(bookingId, {
+          paymentStatus: "CANCELLED",
+          status: "CANCELLED",
+          updatedAt: new Date(),
+        });
+
+        await PaymentTransaction.findOneAndUpdate(
+          { paymentIntentId: paymentIntent.id },
+          {
+            status: "CANCELLED",
+            updatedAt: new Date(),
+          }
+        );
+
+        console.log(`❌ Webhook: Payment cancelled for booking: ${bookingId}`);
+      }
+    } else if (event.type === "payment_intent.failed") {
+      const paymentIntent = event.data.object;
+      const { bookingId } = paymentIntent.metadata;
+
+      if (bookingId) {
+        await Booking.findByIdAndUpdate(bookingId, {
+          paymentStatus: "FAILED",
+          status: "FAILED",
+          updatedAt: new Date(),
+        });
+
+        await PaymentTransaction.findOneAndUpdate(
+          { paymentIntentId: paymentIntent.id },
+          {
+            status: "FAILED",
+            updatedAt: new Date(),
+          }
+        );
+
+        console.log(`❌ Webhook: Payment failed for booking: ${bookingId}`);
+      }
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error("❌ Webhook processing error:", error);
+    res.status(500).json({ error: "Webhook processing failed" });
+  }
+};
+
+// Process successful payment: update booking, transaction, and send to Rayna
+
+async function processSuccessfulPayment(booking, paymentIntentId) {
+  try {
+    // 1️⃣ Update booking and payment transaction status
+    await Booking.findByIdAndUpdate(booking._id, {
+      paymentStatus: "PAID",
+      status: "CONFIRMED",
+      gatewayReference: paymentIntentId,
+      updatedAt: new Date(),
     });
 
+    await PaymentTransaction.findOneAndUpdate(
+      { paymentIntentId },
+      { status: "PAID", updatedAt: new Date() }
+    );
+
+    console.log(`✅ Payment processed successfully for booking: ${booking.reference}`);
+
+    // 2️⃣ Send booking to Rayna API
+    try {
+      const raynaResponse = await sendBookingToRayna(booking);
+      console.log(`✅ Booking sent to Rayna successfully: ${booking.reference}`);
+    } catch (raynaErr) {
+      console.error(`❌ Rayna booking failed for ${booking.reference}:`, raynaErr.message);
+      // Rayna failure is already recorded inside sendBookingToRayna
+    }
+
+  } catch (error) {
+    console.error("❌ Payment processing error:", error);
+    throw error;
+  }
+}
+
+
+// Get Payment Status
+export const getPaymentStatus = async (req, res) => {
+  try {
+    const { paymentIntentId } = req.params;
+
+    const transaction = await PaymentTransaction.findOne({
+      paymentIntentId,
+    }).populate(
+      "bookingId",
+      "reference status paymentStatus totalGross currency"
+    );
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        error: "Payment transaction not found",
+      });
+    }
+
     res.json({
-      statuscode: 200,
-      error: null,
-      result: bookings
+      success: true,
+      transaction: {
+        id: transaction._id,
+        paymentIntentId: transaction.paymentIntentId,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+        createdAt: transaction.createdAt,
+      },
+      booking: transaction.bookingId,
     });
   } catch (error) {
-    console.error('Error fetching bookings:', error);
+    console.error("❌ Get payment status error:", error);
     res.status(500).json({
-      statuscode: 500,
-      error: 'Failed to fetch bookings',
-      result: []
+      success: false,
+      error: "Failed to get payment status",
     });
+  }
+};
+
+
+
+
+
+
+
+
+// Cancel Booking Controller
+export const cancelBooking = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  try {
+    const { bookingId } = req.body;
+
+    const result = await cancelBookingOnRayna({ _id: bookingId });
+    res.json({
+      success: true,
+      message: "Booking cancelled successfully",
+      raynaResponse: result,
+    });
+  } catch (err) {
+    console.error("❌ Cancel booking error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// Get Merged Booked Tickets Controller
+export const getMergedTickets = async (req, res) => {
+  const { bookingId } = req.params;
+
+  try {
+    const mergedData = await getMergedBookedTickets(bookingId);
+    res.json({
+      success: true,
+      mergedData,
+    });
+  } catch (err) {
+    console.error("❌ Get merged booked tickets error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+
+
+
+// Admin: Get all bookings
+export const getAllBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find().sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      count: bookings.length,
+      bookings,
+    });
+  } catch (err) {
+    console.error("❌ Get all bookings error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+
+
+// User: Get bookings by user ID
+export const getBookingsByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const bookings = await Booking.find({ userId }).sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: bookings.length,
+      bookings,
+    });
+  } catch (err) {
+    console.error("❌ Get bookings by user error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 };

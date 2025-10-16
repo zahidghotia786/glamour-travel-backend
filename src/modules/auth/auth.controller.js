@@ -1,18 +1,23 @@
 import sendPasswordResetEmail from "../emails/email.service.js";
-import { registerUser, loginUser, getUserProfile, updateUserProfile } from "./auth.service.js";
+import { 
+  registerUser, 
+  loginUser, 
+  getUserProfile, 
+  updateUserProfile 
+} from "./auth.service.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import prisma from "../../config/db.js";
+import User from "../../models/users/model.js";
 
 
-// Registration
+// ✅ Registration
 export const register = async (req, res) => {
   try {
     const { token, user } = await registerUser(req.body);
-    
+
     res.status(201).json({
       success: true,
-      message: "Account created successfully! Welcome to Glamour Tours UAE.",
+      message: "Please Verify Email.",
       token,
       role: user.role,
       user,
@@ -26,11 +31,12 @@ export const register = async (req, res) => {
   }
 };
 
-// auth.controller.js - login function
+
+// ✅ Login
 export const login = async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-    
+
     res.json({
       success: true,
       message: `Welcome back, ${user.firstName}!`,
@@ -40,16 +46,15 @@ export const login = async (req, res) => {
     });
   } catch (err) {
     console.error("Login Error:", err.message);
-    
-    // Specific error message for unverified email
+
     if (err.message.includes("verify your email")) {
-      return res.status(400).json({  // Change from 403 to 400
+      return res.status(400).json({
         success: false,
         error: err.message,
-        needsVerification: true // Frontend ke liye flag
+        needsVerification: true
       });
     }
-    
+
     res.status(400).json({ 
       success: false,
       error: err.message 
@@ -57,7 +62,8 @@ export const login = async (req, res) => {
   }
 };
 
-// Get user profile
+
+// ✅ Get User Profile
 export const getProfile = async (req, res) => {
   try {
     const user = await getUserProfile(req.user.id);
@@ -74,7 +80,8 @@ export const getProfile = async (req, res) => {
   }
 };
 
-// Update user profile
+
+// ✅ Update User Profile
 export const updateProfile = async (req, res) => {
   try {
     const user = await updateUserProfile(req.user.id, req.body);
@@ -93,13 +100,10 @@ export const updateProfile = async (req, res) => {
 };
 
 
-
-
-// Forgot password - send reset email
+// ✅ Forgot Password - Send Reset Email
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -107,13 +111,10 @@ export const forgotPassword = async (req, res) => {
       });
     }
 
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() }
-    });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
-      // Don't reveal that user doesn't exist for security
+      // Don't reveal if user doesn't exist
       return res.json({
         success: true,
         message: "If the email exists, a password reset link has been sent"
@@ -123,15 +124,15 @@ export const forgotPassword = async (req, res) => {
     // Generate password reset token (expires in 1 hour)
     const resetToken = jwt.sign(
       { 
-        id: user.id,
+        id: user._id,
         email: user.email,
-        purpose: "password_reset" // Different purpose than verification
+        purpose: "password_reset"
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // Send password reset email
+    // Send reset email
     const emailResult = await sendPasswordResetEmail(
       user.email,
       resetToken,
@@ -156,7 +157,8 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-// Reset password - verify token and update password
+
+// ✅ Reset Password - Verify Token & Update Password
 export const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -168,7 +170,6 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Validate password strength
     if (newPassword.length < 6) {
       return res.status(400).json({
         success: false,
@@ -176,10 +177,9 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Verify the token
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Check if token is for password reset
+
     if (decoded.purpose !== "password_reset") {
       return res.status(400).json({
         success: false,
@@ -188,10 +188,7 @@ export const resetPassword = async (req, res) => {
     }
 
     // Find user by ID
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id }
-    });
-
+    const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -199,17 +196,10 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Hash new password
+    // Hash and update password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-    // Update user password
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { 
-        password: hashedPassword,
-        // Optional: Invalidate all existing tokens by changing token version
-      }
-    });
+    user.password = hashedPassword;
+    await user.save();
 
     res.json({
       success: true,
@@ -218,21 +208,21 @@ export const resetPassword = async (req, res) => {
 
   } catch (error) {
     console.error("Reset password error:", error);
-    
+
     if (error.name === "TokenExpiredError") {
       return res.status(400).json({
         success: false,
         error: "Password reset link has expired. Please request a new one."
       });
     }
-    
+
     if (error.name === "JsonWebTokenError") {
       return res.status(400).json({
         success: false,
         error: "Invalid reset token."
       });
     }
-    
+
     res.status(500).json({
       success: false,
       error: "Failed to reset password"

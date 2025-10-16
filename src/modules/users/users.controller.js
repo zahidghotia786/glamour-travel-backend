@@ -3,6 +3,7 @@ import usersServices from "./users.services.js";
 class UserController {
   // Get user profile
   async getProfile(req, res) {
+    console.log('Get Profile Request by User ID:', req.user);
     try {
       const userId = req.user.id;
       const profile = await usersServices.getProfile(userId);

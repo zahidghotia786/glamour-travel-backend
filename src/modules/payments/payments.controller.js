@@ -165,93 +165,6 @@ async function createZiinaPaymentSession(booking, amount, currency) {
   }
 }
 
-// Card Payment Integration (Stripe-like, you can adapt to your preferred provider)
-async function createCardPaymentSession(booking, amount, currency) {
-  try {
-    // For demo purposes - integrate with your actual card payment provider
-    // This could be Stripe, Checkout.com, etc.
-    
-    const paymentData = {
-      amount: Math.round(amount * 100),
-      currency: currency.toLowerCase(),
-      description: `Tour Booking - ${booking.reference}`,
-      success_url: `${process.env.FRONTEND_URL}/payment-success?bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled?bookingId=${booking.id}`,
-      metadata: {
-        booking_id: booking.id,
-        user_id: booking.userId,
-        reference: booking.reference
-      }
-    };
-
-    // Example with a payment provider - replace with your actual implementation
-    const paymentSession = {
-      id: `card_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      url: `${process.env.FRONTEND_URL}/card-payment?bookingId=${booking.id}` // Your card payment page
-    };
-
-    return {
-      success: true,
-      paymentIntentId: paymentSession.id,
-      redirectUrl: paymentSession.url,
-      gateway: 'CARD',
-      rawResponse: paymentSession
-    };
-
-  } catch (error) {
-    console.error('Card payment error:', error);
-    return {
-      success: false,
-      error: 'Card payment service unavailable'
-    };
-  }
-}
-
-// Bank Transfer Integration
-async function createBankTransferSession(booking, amount, currency) {
-  try {
-    // Generate bank transfer reference
-    const transferReference = `BANK-${booking.reference}-${Date.now()}`;
-    
-    // Create bank transfer record
-    const bankDetails = {
-      bankName: process.env.BANK_NAME || 'Example Bank',
-      accountName: process.env.BANK_ACCOUNT_NAME || 'Tour Company LLC',
-      accountNumber: process.env.BANK_ACCOUNT_NUMBER || '123456789',
-      iban: process.env.BANK_IBAN || 'AE070331234567890123456',
-      swiftCode: process.env.BANK_SWIFT || 'EXBLAEAD',
-      reference: transferReference,
-      amount: amount,
-      currency: currency,
-      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours expiry
-    };
-
-    // Update booking with bank transfer details
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        gatewayReference: transferReference,
-        updatedAt: new Date(),
-      },
-    });
-
-    return {
-      success: true,
-      paymentIntentId: transferReference,
-      redirectUrl: `${process.env.FRONTEND_URL}/bank-transfer?bookingId=${booking.id}&reference=${transferReference}`,
-      gateway: 'BANK_TRANSFER',
-      rawResponse: bankDetails,
-      bankDetails: bankDetails
-    };
-
-  } catch (error) {
-    console.error('Bank transfer error:', error);
-    return {
-      success: false,
-      error: 'Bank transfer service unavailable'
-    };
-  }
-}
 
 // Confirm Payment
 export const confirmPayment = async (req, res) => {
@@ -362,20 +275,6 @@ async function verifyZiinaPayment(paymentIntentId) {
   }
 }
 
-// Verify Card Payment
-async function verifyCardPayment(paymentIntentId) {
-  // Implement based on your card payment provider
-  // This is a placeholder - replace with actual implementation
-  return true; // For demo purposes
-}
-
-// Verify Bank Transfer
-async function verifyBankTransfer(reference) {
-  // Implement bank transfer verification logic
-  // This could involve checking against your bank statements
-  // or manual verification process
-  return true; // For demo purposes - manual verification needed
-}
 
 // Process Successful Payment
 async function processSuccessfulPayment(booking) {

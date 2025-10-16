@@ -1,82 +1,72 @@
-import prisma from "../../config/db.js";
 import jwt from "jsonwebtoken";
 import emailService from "../emails/email.service.js";
-
+import User from "../../models/users/model.js"; // Import your Mongoose model
 
 // auth.controller.js - Updated verifyEmail function
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
-    
+
     if (!token) {
       return res.status(400).json({
         success: false,
-        error: "Verification token is required"
+        error: "Verification token is required",
       });
     }
 
     // Verify the token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+
     // Find user by ID
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id }
-    });
+    const user = await User.findById(decoded.id);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "User not found"
+        error: "User not found",
       });
     }
 
     if (user.emailVerified) {
       return res.status(400).json({
         success: false,
-        error: "Email already verified"
+        error: "Email already verified",
       });
     }
 
     // Update user to mark email as verified
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { emailVerified: true }
-    });
+    user.emailVerified = true;
+    await user.save();
 
-    // JSON response for API call
     res.json({
       success: true,
-      message: "Email verified successfully"
+      message: "Email verified successfully",
     });
-    
   } catch (err) {
     console.error("Email verification error:", err);
-    
+
     if (err.name === "TokenExpiredError") {
       return res.status(400).json({
         success: false,
-        error: "Verification link expired. Please request a new one."
+        error: "Verification link expired. Please request a new one.",
       });
     }
-    
+
     if (err.name === "JsonWebTokenError") {
       return res.status(400).json({
         success: false,
-        error: "Invalid verification token."
+        error: "Invalid verification token.",
       });
     }
-    
+
     res.status(500).json({
       success: false,
-      error: "Email verification failed."
+      error: "Email verification failed.",
     });
   }
 };
 
-
-
-// email.controller.js - Add this function
-
+// email.controller.js - resend verification
 export const resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
@@ -84,56 +74,52 @@ export const resendVerification = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        error: "Email is required"
+        error: "Email is required",
       });
     }
 
     // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       // Don't reveal if email exists or not for security
       return res.json({
         success: true,
-        message: "If the email exists, a verification link has been sent."
+        message: "If the email exists, a verification link has been sent.",
       });
     }
 
     if (user.emailVerified) {
       return res.status(400).json({
         success: false,
-        error: "Email is already verified"
+        error: "Email is already verified",
       });
     }
 
     // Generate new verification token
     const verificationToken = jwt.sign(
-      { 
-        id: user.id,
+      {
+        id: user._id,
         email: user.email,
-        type: 'email_verification'
+        type: "email_verification",
       },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: "24h" }
     );
 
     // Send verification email
     await emailService.sendVerificationEmail(user.email, verificationToken, user.firstName);
 
-
     res.json({
       success: true,
-      message: "Verification email sent successfully"
+      message: "Verification email sent successfully",
     });
-
   } catch (err) {
     console.error("Resend verification error:", err);
-    
+
     res.status(500).json({
       success: false,
-      error: "Failed to resend verification email"
+      error: "Failed to resend verification email",
     });
   }
 };
