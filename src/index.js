@@ -41,7 +41,7 @@ app.use("/tours", express.static(path.resolve("public/tours")));
 
 // cron job 
 
-// startTourSyncCron();
+startTourSyncCron();
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
