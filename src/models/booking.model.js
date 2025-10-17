@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const passengerSchema = new mongoose.Schema({
   serviceType: String,
@@ -11,7 +11,7 @@ const passengerSchema = new mongoose.Schema({
   message: String,
   leadPassenger: Number,
   paxType: String,
-  clientReferenceNo: String
+  clientReferenceNo: String,
 });
 
 const tourDetailSchema = new mongoose.Schema({
@@ -28,19 +28,35 @@ const tourDetailSchema = new mongoose.Schema({
   pickup: String,
   adultRate: Number,
   childRate: Number,
-  serviceTotal: String
+  serviceTotal: String,
+});
+
+// Add API response schema to handle external API data
+const apiResponseSchema = new mongoose.Schema({
+  result: {
+    details: [
+      {
+        bookingId: String,
+        servicetype: String,
+        status: String,
+        downloadRequired: Boolean,
+      },
+    ],
+  },
+  error: String,
+  statuscode: Number,
 });
 
 const bookingSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: "User",
+    required: true,
   },
   reference: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
   },
   clientReferenceNo: String,
   passengerCount: Number,
@@ -50,42 +66,45 @@ const bookingSchema = new mongoose.Schema({
   totalGross: Number,
   currency: {
     type: String,
-    default: 'AED'
+    default: "AED",
   },
   paymentMethod: String,
   paymentStatus: {
     type: String,
-    enum: ['PENDING', 'PAID', 'FAILED', 'CANCELLED'],
-    default: 'PENDING'
+    enum: ["PENDING", "PAID", "FAILED", "CANCELLED"],
+    default: "PENDING",
   },
   paymentIntentId: String,
   paymentGateway: String,
-  status: {
-    type: String,
-    enum: ['PENDING', 'CONFIRMED', 'CANCELLED'],
-    default: 'PENDING'
-  },
+status: {
+  type: String,
+  enum: ['AWAITING_PAYMENT', 'PENDING', 'CONFIRMED', 'CANCELLED', 'SUCCESS', 'FAILED'],
+  default: 'AWAITING_PAYMENT'
+},
   gatewayReference: String,
- raynaBookingId: String,
+  raynaBookingId: String,
   raynaStatus: {
     type: String,
-    enum: ['PENDING', 'CONFIRMED', 'FAILED', 'CANCELLED'],
-    default: 'PENDING'
+    enum: ["NOT_SUBMITTED", "PENDING", "CONFIRMED", "FAILED", "CANCELLED"],
+    default: "NOT_SUBMITTED",
   },
   raynaBookingResponse: mongoose.Schema.Types.Mixed,
+  // Add API response field to store external booking system response
+  apiResponse: apiResponseSchema,
+  syncedAt: Date, // Add syncedAt field
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   updatedAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
-bookingSchema.pre('save', function(next) {
+bookingSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
-export default mongoose.model('Booking', bookingSchema);
+export default mongoose.model("Booking", bookingSchema);

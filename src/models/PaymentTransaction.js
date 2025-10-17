@@ -6,22 +6,41 @@ const paymentTransactionSchema = new mongoose.Schema({
     ref: 'Booking',
     required: true
   },
-  paymentIntentId: {
-    type: String,
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
-  amount: Number,
+  paymentIntentId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  amount: {
+    type: Number,
+    required: true
+  },
   currency: {
     type: String,
     default: 'AED'
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PAID', 'FAILED', 'CANCELLED'],
+    enum: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'],
     default: 'PENDING'
   },
+  type: {
+    type: String,
+    enum: ['PAYMENT', 'REFUND', 'PARTIAL_PAYMENT'],
+    default: 'PAYMENT'
+  },
+  gateway: {
+    type: String,
+    required: true
+  },
   gatewayResponse: mongoose.Schema.Types.Mixed,
-  gateway: String,
+  gatewayReference: String,
+  description: String,
   createdAt: {
     type: Date,
     default: Date.now

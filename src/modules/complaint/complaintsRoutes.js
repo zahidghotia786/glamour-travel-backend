@@ -1,4 +1,3 @@
-// routes/complaintsRoutes.js
 import express from 'express';
 import { body } from 'express-validator';
 import {
@@ -9,7 +8,7 @@ import {
   rateComplaint,
   getUserBookingsForComplaints
 } from './complaintsController.js';
-import { authenticateToken, requireRole } from "../../middleware/authMiddleware.js";
+import { authenticateToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 

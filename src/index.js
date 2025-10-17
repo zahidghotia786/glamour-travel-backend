@@ -41,11 +41,11 @@ app.use("/tours", express.static(path.resolve("public/tours")));
 
 // cron job 
 
-startTourSyncCron();
+// startTourSyncCron();
 
-import authRoutes from "./modules/auth/auth.routes.js";
+import authRoutes from "./modules/auth/auth.routes.js";  //done
+import emailRoutes from "./modules/emails/email.routes.js"  //done
 import adminRoutes from "./modules/admin/admin.routes.js";
-import emailRoutes from "./modules/emails/email.routes.js"
 import productsRoutes from "./modules/products/products.routes.js";
 import publicProductsRoutes from "./modules/products/products.routes.js";
 import b2bRoutes from "./modules/b2b/b2b.routes.js";
@@ -79,7 +79,7 @@ app.use("/api/admin/b2b", b2bRoutes);
 app.use("/api/admin/categories", categoryRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/booking", bookingRoutes);
-app.use("/api/payments", paymentRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/tourtickets", tourTicketsRoutes);
 

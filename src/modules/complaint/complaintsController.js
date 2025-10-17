@@ -1,6 +1,7 @@
-// controllers/complaintsController.js - FIXED VERSION
 import { validationResult } from 'express-validator';
-import prisma from '../../config/db.js';
+import Complaint from '../../models/Complaint.js';
+import Booking from '../../models/booking.model.js';
+import User from '../../models/users/model.js';
 
 // Get user's complaints
 export const getUserComplaints = async (req, res) => {
@@ -8,29 +9,14 @@ export const getUserComplaints = async (req, res) => {
     const userId = req.user.id;
     const { status, category } = req.query;
 
-    const where = { userId };
+    const filter = { userId };
     
-    if (status) where.status = status;
-    if (category) where.category = category;
+    if (status) filter.status = status;
+    if (category) filter.category = category;
 
-    const complaints = await prisma.complaint.findMany({
-      where,
-      include: {
-        booking: {
-          select: {
-            reference: true,
-            totalGross: true,
-            currency: true,
-            status: true
-          }
-        },
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const complaints = await Complaint.find(filter)
+      .populate('bookingId', 'reference totalGross currency status')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -45,7 +31,7 @@ export const getUserComplaints = async (req, res) => {
   }
 };
 
-// Create new complaint - FIXED
+// Create new complaint
 export const createComplaint = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -60,69 +46,44 @@ export const createComplaint = async (req, res) => {
     const complaintData = req.body;
 
     // Get user info for contact details
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, phoneNumber: true }
-    });
-
-    // If bookingId is provided, get the tour name from booking items
-    let tourName = null;
-    if (complaintData.bookingId) {
-      const bookingWithItems = await prisma.booking.findUnique({
-        where: { id: complaintData.bookingId },
-        include: {
-          items: {
-            select: {
-              name: true,
-              product: {
-                select: {
-                  name: true
-                }
-              }
-            },
-            take: 1
-          }
-        }
+    const user = await User.findById(userId).select('email phoneNumber');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
       });
+    }
 
-      if (bookingWithItems && bookingWithItems.items.length > 0) {
-        const firstItem = bookingWithItems.items[0];
-        tourName = firstItem.name || firstItem.product?.name || null;
+    let tourName = '';
+    // If bookingId is provided, get the tour details
+    if (complaintData.bookingId) {
+      const booking = await Booking.findById(complaintData.bookingId);
+      if (booking && booking.tourDetails && booking.tourDetails.length > 0) {
+        // You can customize how to get tour name from tourDetails
+        tourName = `Tour #${booking.tourDetails[0].tourId}`;
       }
     }
 
-    const complaint = await prisma.complaint.create({
-      data: {
-        ...complaintData,
-        userId,
-        tourName, // Add the tour name here
-        contactEmail: complaintData.contactEmail || user.email,
-        contactPhone: complaintData.contactPhone || user.phoneNumber,
-        status: 'OPEN'
-      },
-      include: {
-        booking: {
-          select: {
-            reference: true,
-            totalGross: true,
-            currency: true,
-            status: true
-          }
-        }
-      }
-    });
-
-    // Create initial message
-    await prisma.complaintMessage.create({
-      data: {
-        complaintId: complaint.id,
+    // Create complaint
+    const complaint = new Complaint({
+      ...complaintData,
+      userId,
+      tourName,
+      contactEmail: complaintData.contactEmail || user.email,
+      contactPhone: complaintData.contactPhone || user.phoneNumber,
+      status: 'OPEN',
+      messages: [{
+        message: complaintData.description,
         senderType: 'user',
         senderId: userId,
-        message: complaintData.description
-      }
+        senderTypeModel: 'User'
+      }]
     });
 
-    // TODO: Send notification to admin
+    await complaint.save();
+
+    // Populate booking details for response
+    await complaint.populate('bookingId', 'reference totalGross currency status');
 
     res.json({
       success: true,
@@ -144,27 +105,10 @@ export const getComplaintDetails = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const complaint = await prisma.complaint.findFirst({
-      where: {
-        id,
-        userId // Ensure user can only access their own complaints
-      },
-      include: {
-        booking: {
-          select: {
-            reference: true,
-            totalGross: true,
-            currency: true,
-            status: true,
-            paymentStatus: true,
-            externalBookingId: true
-          }
-        },
-        messages: {
-          orderBy: { createdAt: 'asc' }
-        }
-      }
-    });
+    const complaint = await Complaint.findOne({
+      _id: id,
+      userId
+    }).populate('bookingId', 'reference totalGross currency status paymentStatus raynaBookingId');
 
     if (!complaint) {
       return res.status(404).json({
@@ -202,10 +146,7 @@ export const addComplaintMessage = async (req, res) => {
     const { message, attachments = [] } = req.body;
 
     // Verify complaint exists and belongs to user
-    const complaint = await prisma.complaint.findFirst({
-      where: { id, userId }
-    });
-
+    const complaint = await Complaint.findOne({ _id: id, userId });
     if (!complaint) {
       return res.status(404).json({
         success: false,
@@ -213,27 +154,21 @@ export const addComplaintMessage = async (req, res) => {
       });
     }
 
-    const complaintMessage = await prisma.complaintMessage.create({
-      data: {
-        complaintId: id,
-        senderType: 'user',
-        senderId: userId,
-        message,
-        attachments
-      }
+    // Add new message
+    complaint.messages.push({
+      message,
+      senderType: 'user',
+      senderId: userId,
+      senderTypeModel: 'User',
+      attachments
     });
 
-    // Update complaint updatedAt
-    await prisma.complaint.update({
-      where: { id },
-      data: { updatedAt: new Date() }
-    });
-
-    // TODO: Notify admin about new message
+    complaint.updatedAt = new Date();
+    await complaint.save();
 
     res.json({
       success: true,
-      message: complaintMessage
+      message: complaint.messages[complaint.messages.length - 1]
     });
   } catch (error) {
     console.error('Add complaint message error:', error);
@@ -259,8 +194,10 @@ export const rateComplaint = async (req, res) => {
     const userId = req.user.id;
     const { rating, comment } = req.body;
 
-    const complaint = await prisma.complaint.findFirst({
-      where: { id, userId, status: 'RESOLVED' }
+    const complaint = await Complaint.findOne({
+      _id: id,
+      userId,
+      status: 'RESOLVED'
     });
 
     if (!complaint) {
@@ -270,18 +207,16 @@ export const rateComplaint = async (req, res) => {
       });
     }
 
-    const updatedComplaint = await prisma.complaint.update({
-      where: { id },
-      data: {
-        rating: parseInt(rating),
-        ratingComment: comment,
-        status: 'CLOSED'
-      }
-    });
+    complaint.rating = parseInt(rating);
+    complaint.ratingComment = comment;
+    complaint.status = 'CLOSED';
+    complaint.updatedAt = new Date();
+
+    await complaint.save();
 
     res.json({
       success: true,
-      complaint: updatedComplaint,
+      complaint,
       message: 'Thank you for your feedback'
     });
   } catch (error) {
@@ -293,58 +228,45 @@ export const rateComplaint = async (req, res) => {
   }
 };
 
-// Get user's bookings for complaint form - FIXED
+// Get user's bookings for complaint form
 export const getUserBookingsForComplaints = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        userId,
-        status: { in: ['CONFIRMED', 'CANCELLED', 'FAILED'] }
-      },
-      select: {
-        id: true,
-        reference: true,
-        status: true,
-        paymentStatus: true,
-        totalGross: true,
-        currency: true,
-        externalBookingId: true,
-        createdAt: true,
-        items: {
-          select: {
-            name: true,
-            product: {
-              select: {
-                name: true
-              }
-            }
-          },
-          take: 1
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const bookings = await Booking.find({
+      userId,
+      status: { $in: ['AWAITING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'FAILED', 'PAID', 'PENDING', 'SUCCESS'] }
+    })
+    .select('reference status paymentStatus totalGross currency raynaBookingId tourDetails passengerCount leadPassenger createdAt')
+    .sort({ createdAt: -1 });
+
+    console.log("📊 Found bookings:", bookings.length);
+    console.log("🔍 Booking details:", bookings);
 
     // Transform the data to include tour names
     const transformedBookings = bookings.map(booking => {
-      let tourName = 'Unknown Tour';
+      let tourName = 'Tour Booking';
       
-      if (booking.items && booking.items.length > 0) {
-        const firstItem = booking.items[0];
-        tourName = firstItem.name || (firstItem.product?.name || 'Unknown Tour');
+      if (booking.tourDetails && booking.tourDetails.length > 0) {
+        const tourDetail = booking.tourDetails[0];
+        tourName = `Tour #${tourDetail.tourId}`;
+        
+        if (tourDetail.pickup) {
+          tourName += ` - ${tourDetail.pickup}`;
+        }
       }
 
       return {
-        id: booking.id,
+        id: booking._id,
         reference: booking.reference,
         tourName: tourName,
         status: booking.status,
         paymentStatus: booking.paymentStatus,
         totalGross: booking.totalGross,
         currency: booking.currency,
-        externalBookingId: booking.externalBookingId,
+        raynaBookingId: booking.raynaBookingId,
+        passengerCount: booking.passengerCount,
+        tourDate: booking.tourDetails?.[0]?.tourDate || '',
         createdAt: booking.createdAt
       };
     });

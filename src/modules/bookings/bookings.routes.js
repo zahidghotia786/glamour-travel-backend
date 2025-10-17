@@ -20,7 +20,7 @@ router.post(
 );
 
 // Payment status check ke liye
-router.get('/payment-status/:paymentIntentId', authenticateToken, controller.getPaymentStatus);
+router.get('/verify-payment/:bookingId', authenticateToken, controller.getPaymentStatus);
 
 // Webhook for payment notifications
 router.post('/payment-webhook', controller.handlePaymentWebhook);
@@ -46,14 +46,6 @@ router.get(
 router.get("/all", authenticateToken , requireRole("ADMIN"), controller.getAllBookings);
 
 // User: Get bookings by user ID
-router.get(
-  "/user/:userId",authenticateToken,
-  [
-    param("userId")
-      .notEmpty().withMessage("User ID is required")
-      .isMongoId().withMessage("Invalid User ID"),
-  ],
-  controller.getBookingsByUser
-);
+router.get('/my-bookings', authenticateToken, controller.getBookingsByUser);
 
 export default router;

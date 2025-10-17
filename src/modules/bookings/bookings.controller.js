@@ -31,6 +31,7 @@ export const createBookingWithPayment = async (req, res) => {
       uniqueNo,
       passengerCount,
       paymentMethod,
+      userId // Log userId for debugging
     });
 
     // Step 1: Check for existing booking with the same reference
@@ -54,7 +55,8 @@ export const createBookingWithPayment = async (req, res) => {
         booking.totalGross = totalGross;
         booking.paymentMethod = paymentMethod.toUpperCase();
         booking.paymentStatus = "PENDING";
-        booking.status = "PENDING";
+        booking.status = "AWAITING_PAYMENT";
+        booking.providerStatus = "NOT_SUBMITTED";
         booking.updatedAt = new Date();
 
         await booking.save();
@@ -74,7 +76,8 @@ export const createBookingWithPayment = async (req, res) => {
         currency: "AED",
         paymentMethod: paymentMethod.toUpperCase(),
         paymentStatus: "PENDING",
-        status: "PENDING",
+        status: "AWAITING_PAYMENT",
+        providerStatus: "NOT_SUBMITTED",
       });
 
       await booking.save();
@@ -113,20 +116,23 @@ export const createBookingWithPayment = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    // Step 4: Create payment transaction record
+    // Step 4: Create payment transaction record WITH userId
     const paymentTransaction = new PaymentTransaction({
       bookingId: savedBooking._id,
+      userId: userId, // ✅ ADD THIS LINE - This is crucial for the payments page
       paymentIntentId: paymentResult.paymentIntentId,
       amount: totalGross,
       currency: "AED",
       status: "PENDING",
       gatewayResponse: paymentResult.rawResponse,
       gateway: paymentResult.gateway,
+      type: "PAYMENT", // ✅ Also add type for better organization
     });
 
     await paymentTransaction.save();
 
     console.log("✅ Payment session created:", paymentResult.paymentIntentId);
+    console.log("✅ Payment transaction created for user:", userId);
 
     // Step 5: Return response with redirect URL
     res.json({
@@ -137,6 +143,7 @@ export const createBookingWithPayment = async (req, res) => {
           reference: savedBooking.reference,
           status: savedBooking.status,
           paymentStatus: savedBooking.paymentStatus,
+          providerStatus: savedBooking.providerStatus,
         },
         payment: {
           paymentIntentId: paymentResult.paymentIntentId,
@@ -164,10 +171,10 @@ async function createZiinaPaymentSession(booking, amount, currency) {
         amount: Math.round(amount * 100), // Convert to fils
         currency_code: currency,
         message: `Payment for tour booking - Ref: ${booking.reference}`,
-        success_url: `${process.env.FRONTEND_URL}/payment-success?bookingId=${booking._id}&paymentIntentId={payment_intent_id}`,
+        success_url: `${process.env.FRONTEND_URL}/payment-success?bookingId=${booking._id}`,
         cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled?bookingId=${booking._id}`,
         failure_url: `${process.env.FRONTEND_URL}/payment-failed?bookingId=${booking._id}`,
-        test: process.env.NODE_ENV === "development", // Use test mode for development
+        test: true, // Use test mode for development
         transaction_source: "directApi",
         expiry: String(Date.now() + 15 * 60 * 1000), // 15 minutes expiry
         allow_tips: false,
@@ -319,14 +326,19 @@ async function processSuccessfulPayment(booking, paymentIntentId) {
 // Get Payment Status
 export const getPaymentStatus = async (req, res) => {
   try {
-    const { paymentIntentId } = req.params;
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking || !booking.paymentIntentId) {
+      return res.status(404).json({
+        success: false,
+        error: "Booking not found or missing paymentIntentId",
+      });
+    }
 
     const transaction = await PaymentTransaction.findOne({
-      paymentIntentId,
-    }).populate(
-      "bookingId",
-      "reference status paymentStatus totalGross currency"
-    );
+      paymentIntentId: booking.paymentIntentId,
+    });
 
     if (!transaction) {
       return res.status(404).json({
@@ -337,22 +349,12 @@ export const getPaymentStatus = async (req, res) => {
 
     res.json({
       success: true,
-      transaction: {
-        id: transaction._id,
-        paymentIntentId: transaction.paymentIntentId,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-      },
-      booking: transaction.bookingId,
+      transaction,
+      booking,
     });
   } catch (error) {
-    console.error("❌ Get payment status error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to get payment status",
-    });
+    console.error("❌ verifyPaymentByBooking error:", error);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 };
 
@@ -424,13 +426,15 @@ export const getAllBookings = async (req, res) => {
 // User: Get bookings by user ID
 export const getBookingsByUser = async (req, res) => {
   try {
-    const { userId } = req.params;
+    // Get userId from authenticated user, not from params
+    const userId = req.user.id; // Assuming your auth middleware sets req.user
+    
     const bookings = await Booking.find({ userId }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: bookings.length,
-      bookings,
+      data: bookings, // Changed from 'bookings' to 'data' to match frontend expectation
     });
   } catch (err) {
     console.error("❌ Get bookings by user error:", err.message);

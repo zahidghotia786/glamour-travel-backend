@@ -70,6 +70,7 @@ export const registerUser = async (userData) => {
 
   // ✅ Create user in database
   const user = await User.create(userCreateData);
+  console.log(user)
 
   // Generate email verification token
   const verificationToken = jwt.sign(

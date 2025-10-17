@@ -112,6 +112,7 @@ export const forgotPassword = async (req, res) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
+    console.log(user)
 
     if (!user) {
       // Don't reveal if user doesn't exist
